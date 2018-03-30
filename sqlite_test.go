@@ -20,7 +20,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/crawshaw/sqlite"
+	"crawshaw.io/sqlite"
 )
 
 func TestConn(t *testing.T) {
