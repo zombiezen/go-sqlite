@@ -34,21 +34,14 @@ func TestBlob(t *testing.T) {
 		}
 	}()
 
-	stmt, _, err := c.PrepareTransient("CREATE TABLE blobs (col BLOB);")
-	if err != nil {
+	if _, err := c.Prep("DROP TABLE IF EXISTS blobs;").Step(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := stmt.Step(); err != nil {
+	if _, err := c.Prep("CREATE TABLE blobs (col BLOB);").Step(); err != nil {
 		t.Fatal(err)
-	}
-	if err := stmt.Finalize(); err != nil {
-		t.Error(err)
 	}
 
-	stmt, _, err = c.PrepareTransient("INSERT INTO blobs (col) VALUES ($col);")
-	if err != nil {
-		t.Fatal(err)
-	}
+	stmt := c.Prep("INSERT INTO blobs (col) VALUES ($col);")
 	stmt.SetZeroBlob("$col", 5)
 	if _, err := stmt.Step(); err != nil {
 		t.Fatal(err)
@@ -92,22 +85,20 @@ func TestBlob(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer b.Close()
 	got := make([]byte, 5)
 	n, err = b.ReadAt(got, 0)
 	if n != len(got) {
 		t.Fatalf("b.ReadAt=%d, want len(got)=%d", n, len(got))
 	}
-
 	want := []byte{1, 2, 3, 4, 5}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("b.ReadAt got %v, want %v", got, want)
 	}
-
 	n, err = b.ReadAt(got[3:], 3)
 	if n != len(got)-3 {
 		t.Fatalf("b.ReadAt(got, 3)=%d, want len(got)-3=%d", n, len(got)-3)
 	}
-
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("b.ReadAt(got, 3) %v, want %v", got, want)
 	}
@@ -125,32 +116,14 @@ func TestConcurrentBlobSpins(t *testing.T) {
 	defer c.Close()
 	defer c2.Close()
 
-	stmt, _, err := c.PrepareTransient("DROP TABLE IF EXISTS blobs;")
-	if err != nil {
+	if _, err := c.Prep("DROP TABLE IF EXISTS blobs;").Step(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := stmt.Step(); err != nil {
+	if _, err := c.Prep("CREATE TABLE blobs (col BLOB);").Step(); err != nil {
 		t.Fatal(err)
-	}
-	if err := stmt.Finalize(); err != nil {
-		t.Error(err)
 	}
 
-	stmt, _, err = c.PrepareTransient("CREATE TABLE blobs (col BLOB);")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := stmt.Step(); err != nil {
-		t.Fatal(err)
-	}
-	if err := stmt.Finalize(); err != nil {
-		t.Error(err)
-	}
-
-	stmt, _, err = c.PrepareTransient("INSERT INTO blobs (col) VALUES ($col);")
-	if err != nil {
-		t.Fatal(err)
-	}
+	stmt := c.Prep("INSERT INTO blobs (col) VALUES ($col);")
 	stmt.SetZeroBlob("$col", 1024)
 	if _, err := stmt.Step(); err != nil {
 		t.Fatal(err)
@@ -201,32 +174,14 @@ func TestConcurrentBlobWrites(t *testing.T) {
 	}
 	defer c.Close()
 
-	stmt, _, err := c.PrepareTransient("DROP TABLE IF EXISTS blobs;")
-	if err != nil {
+	if _, err := c.Prep("DROP TABLE IF EXISTS blobs;").Step(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := stmt.Step(); err != nil {
+	if _, err := c.Prep("CREATE TABLE blobs (col BLOB);").Step(); err != nil {
 		t.Fatal(err)
-	}
-	if err := stmt.Finalize(); err != nil {
-		t.Error(err)
 	}
 
-	stmt, _, err = c.PrepareTransient("CREATE TABLE blobs (col BLOB);")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := stmt.Step(); err != nil {
-		t.Fatal(err)
-	}
-	if err := stmt.Finalize(); err != nil {
-		t.Error(err)
-	}
-
-	stmt, _, err = c.PrepareTransient("INSERT INTO blobs (col) VALUES ($col);")
-	if err != nil {
-		t.Fatal(err)
-	}
+	stmt := c.Prep("INSERT INTO blobs (col) VALUES ($col);")
 	stmt.SetZeroBlob("$col", 1024)
 	var blobRowIDs []int64
 	for i := 0; i < numBlobs; i++ {

@@ -35,19 +35,10 @@ func TestPool(t *testing.T) {
 	}()
 
 	c := dbpool.Get(nil)
-	stmt, _, err := c.PrepareTransient("CREATE TABLE footable (col1 integer);")
-	if err != nil {
+	if hasRow, err := c.Prep("CREATE TABLE footable (col1 integer);").Step(); err != nil {
 		t.Fatal(err)
-	}
-	hasRow, err := stmt.Step()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if hasRow {
+	} else if hasRow {
 		t.Errorf("CREATE TABLE reports having a row")
-	}
-	if err := stmt.Finalize(); err != nil {
-		t.Error(err)
 	}
 	dbpool.Put(c)
 	c = nil
@@ -65,15 +56,11 @@ func TestPool(t *testing.T) {
 	wg.Wait()
 
 	c = dbpool.Get(nil)
-	stmt, _, err = c.PrepareTransient("SELECT COUNT(*) FROM footable;")
-	if err != nil {
+	defer dbpool.Put(c)
+	stmt := c.Prep("SELECT COUNT(*) FROM footable;")
+	if hasRow, err := stmt.Step(); err != nil {
 		t.Fatal(err)
-	}
-	hasRow, err = stmt.Step()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if hasRow {
+	} else if hasRow {
 		count := int(stmt.ColumnInt64(0))
 		if want := poolSize * 10 * insertCount; count != want {
 			t.Errorf("SELECT COUNT(*) = %d, want %d", count, want)
@@ -81,17 +68,6 @@ func TestPool(t *testing.T) {
 	} else {
 		t.Errorf("SELECT COUNT(*) reports not having a row")
 	}
-	if err := stmt.Finalize(); err != nil {
-		t.Error(err)
-	}
-	stmt, _, err = c.PrepareTransient("DROP TABLE footable;")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := stmt.Step(); err != nil {
-		t.Fatal(err)
-	}
-	dbpool.Put(c)
 }
 
 const insertCount = 120
@@ -100,18 +76,9 @@ func testInsert(t *testing.T, id string, dbpool *sqlite.Pool) {
 	c := dbpool.Get(nil)
 	defer dbpool.Put(c)
 
-	begin, _, err := c.PrepareTransient("BEGIN;")
-	if err != nil {
-		t.Errorf("id=%s: BEGIN: %v", id, err)
-	}
-	commit, _, err := c.PrepareTransient("COMMIT;")
-	if err != nil {
-		t.Errorf("id=%s: COMMIT: %v", id, err)
-	}
-	stmt, err := c.Prepare("INSERT INTO footable (col1) VALUES (?);")
-	if err != nil {
-		t.Errorf("id=%s: prepare: %v", id, err)
-	}
+	begin := c.Prep("BEGIN;")
+	commit := c.Prep("COMMIT;")
+	stmt := c.Prep("INSERT INTO footable (col1) VALUES (?);")
 
 	if _, err := begin.Step(); err != nil {
 		t.Errorf("id=%s: BEGIN step: %v", id, err)
@@ -128,7 +95,4 @@ func testInsert(t *testing.T, id string, dbpool *sqlite.Pool) {
 	if _, err := commit.Step(); err != nil {
 		t.Errorf("id=%s: COMMIT step: %v", id, err)
 	}
-
-	begin.Finalize()
-	commit.Finalize()
 }
