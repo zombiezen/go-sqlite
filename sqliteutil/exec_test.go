@@ -17,9 +17,10 @@ package sqliteutil_test
 import (
 	"fmt"
 	"reflect"
-	"sqlite"
-	"sqlite/sqliteutil"
 	"testing"
+
+	"crawshaw.io/sqlite"
+	"crawshaw.io/sqlite/sqliteutil"
 )
 
 func TestExec(t *testing.T) {

@@ -18,8 +18,9 @@ package sqliteutil
 import (
 	"fmt"
 	"reflect"
-	"sqlite"
 	"strings"
+
+	"crawshaw.io/sqlite"
 )
 
 // Exec executes an SQLite query.

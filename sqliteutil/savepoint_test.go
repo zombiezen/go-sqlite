@@ -16,9 +16,10 @@ package sqliteutil
 
 import (
 	"errors"
-	"sqlite"
 	"strings"
 	"testing"
+
+	"crawshaw.io/sqlite"
 )
 
 func TestExec(t *testing.T) {

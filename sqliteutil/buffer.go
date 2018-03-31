@@ -17,7 +17,8 @@ package sqliteutil
 import (
 	"errors"
 	"io"
-	"sqlite"
+
+	"crawshaw.io/sqlite"
 )
 
 // A Buffer is a variable-sized bytes buffer backed by SQLite blobs.

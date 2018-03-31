@@ -17,8 +17,9 @@ package sqliteutil
 import (
 	"fmt"
 	"runtime"
-	"sqlite"
 	"strings"
+
+	"crawshaw.io/sqlite"
 )
 
 // Save creates a named SQLite transaction using SAVEPOINT.

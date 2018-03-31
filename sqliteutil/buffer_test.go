@@ -17,8 +17,9 @@ package sqliteutil
 import (
 	"bytes"
 	"io"
-	"sqlite"
 	"testing"
+
+	"crawshaw.io/sqlite"
 )
 
 func TestBuffer(t *testing.T) {
