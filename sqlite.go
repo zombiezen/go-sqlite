@@ -457,7 +457,7 @@ func (stmt *Stmt) Step() (rowReturned bool, err error) {
 		if err := stmt.conn.interrupted("Stmt.Step", stmt.query); err != nil {
 			return false, err
 		}
-		switch res := C.sqlite3_step(stmt.stmt); res {
+		switch res := C.sqlite3_step(stmt.stmt); uint8(res) { // reduce to non-extended error code
 		case C.SQLITE_LOCKED:
 			if res := C.wait_for_unlock_notify(stmt.conn.conn, stmt.conn.unlockNote); res != C.SQLITE_OK {
 				return false, stmt.conn.reserr("Stmt.Step(Wait)", stmt.query, res)
@@ -468,8 +468,11 @@ func (stmt *Stmt) Step() (rowReturned bool, err error) {
 			return true, nil
 		case C.SQLITE_DONE:
 			return false, nil
-		default:
+		case C.SQLITE_BUSY, C.SQLITE_INTERRUPT, C.SQLITE_CONSTRAINT:
+			// TODO: embed some of these errors into the stmt for zero-alloc errors?
 			return false, stmt.conn.reserr("Stmt.Step", stmt.query, res)
+		default:
+			return false, stmt.conn.extreserr("Stmt.Step", stmt.query, res)
 		}
 	}
 }
