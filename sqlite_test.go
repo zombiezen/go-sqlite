@@ -141,6 +141,23 @@ func TestEarlyInterrupt(t *testing.T) {
 	}
 }
 
+func TestStmtInterrupt(t *testing.T) {
+	conn, err := sqlite.OpenConn(":memory:", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	stmt := sqlite.InterruptedStmt(conn, "CREATE TABLE intt (c);")
+
+	_, err = stmt.Step()
+	if err == nil {
+		t.Fatal("interrupted stmt Step succeeded")
+	}
+	if got := sqlite.ErrCode(err); got != sqlite.SQLITE_INTERRUPT {
+		t.Errorf("Step err=%v, want SQLITE_INTERRUPT", got)
+	}
+}
+
 func TestTrailingBytes(t *testing.T) {
 	conn, err := sqlite.OpenConn(":memory:", 0)
 	if err != nil {

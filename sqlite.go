@@ -223,8 +223,13 @@ func (conn *Conn) Prep(query string) *Stmt {
 	stmt, err := conn.Prepare(query)
 	if err != nil {
 		if ErrCode(err) == SQLITE_INTERRUPT {
-			// TODO: return a *Stmt that is always interrupted
-			return nil
+			return &Stmt{
+				conn:         conn,
+				query:        query,
+				bindNames:    make(map[string]int),
+				colNames:     make(map[string]int),
+				prepInterupt: true,
+			}
 		}
 		panic(err)
 	}
@@ -381,12 +386,20 @@ func reserr(loc, query, msg string, res C.int) error {
 // When a Stmt is no longer needed it should be cleaned up
 // by calling the Finalize method.
 type Stmt struct {
-	conn      *Conn
-	stmt      *C.sqlite3_stmt
-	query     string
-	bindNames map[string]int
-	colNames  map[string]int
-	bindErr   error
+	conn         *Conn
+	stmt         *C.sqlite3_stmt
+	query        string
+	bindNames    map[string]int
+	colNames     map[string]int
+	bindErr      error
+	prepInterupt bool // set if Prep was interrupted
+}
+
+func (stmt *Stmt) interrupted(loc string) error {
+	if stmt.prepInterupt {
+		return reserr(loc, stmt.query, "", C.SQLITE_INTERRUPT)
+	}
+	return stmt.conn.interrupted(loc, stmt.query)
 }
 
 // Finalize deletes a prepared statement.
@@ -416,6 +429,9 @@ func (stmt *Stmt) Finalize() error {
 // https://www.sqlite.org/c3ref/reset.html
 func (stmt *Stmt) Reset() error {
 	stmt.conn.count++
+	if err := stmt.interrupted("Stmt.Reset"); err != nil {
+		return err
+	}
 	res := C.sqlite3_reset(stmt.stmt)
 	return stmt.conn.reserr("Stmt.Reset", stmt.query, res)
 }
@@ -425,6 +441,9 @@ func (stmt *Stmt) Reset() error {
 // https://www.sqlite.org/c3ref/clear_bindings.html
 func (stmt *Stmt) ClearBindings() error {
 	stmt.conn.count++
+	if err := stmt.interrupted("Stmt.ClearBindings"); err != nil {
+		return err
+	}
 	res := C.sqlite3_clear_bindings(stmt.stmt)
 	return stmt.conn.reserr("Stmt.ClearBindings", stmt.query, res)
 }
@@ -465,7 +484,7 @@ func (stmt *Stmt) Step() (rowReturned bool, err error) {
 
 	for {
 		stmt.conn.count++
-		if err := stmt.conn.interrupted("Stmt.Step", stmt.query); err != nil {
+		if err := stmt.interrupted("Stmt.Step"); err != nil {
 			return false, err
 		}
 		switch res := C.sqlite3_step(stmt.stmt); uint8(res) { // reduce to non-extended error code
