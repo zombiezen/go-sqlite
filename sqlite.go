@@ -38,11 +38,16 @@ package sqlite
 // static int transient_bind_blob(sqlite3_stmt* stmt, int col, char* p, int n) {
 //	return sqlite3_bind_blob(stmt, col, p, n, SQLITE_TRANSIENT);
 // }
+//
+// extern void log_fn(void* pArg, int code, char* msg);
+// static void enable_logging() {
+//	sqlite3_config(SQLITE_CONFIG_LOG, log_fn, NULL);
+// }
 import "C"
 import (
 	"bytes"
-	"fmt"
 	"runtime"
+	"sync"
 	"unsafe"
 )
 
@@ -103,6 +108,7 @@ func OpenConn(path string, flags OpenFlags) (*Conn, error) {
 }
 
 func openConn(path string, flags OpenFlags) (*Conn, error) {
+	sqliteInit.Do(sqliteInitFn)
 	if flags == 0 {
 		flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_SHAREDCACHE | SQLITE_OPEN_WAL | SQLITE_OPEN_URI | SQLITE_OPEN_NOMUTEX
 	}
@@ -130,7 +136,8 @@ func openConn(path string, flags OpenFlags) (*Conn, error) {
 	_, file, line, _ := runtime.Caller(2) // caller of OpenConn or Open
 	runtime.SetFinalizer(conn, func(conn *Conn) {
 		if !conn.closed {
-			panic(fmt.Sprintf("%s:%d: *sqlite.Conn garbage collected, call Close method", file, line))
+			var buf [20]byte
+			panic(file + ":" + string(itoa(buf[:], int(line))) + ": *sqlite.Conn garbage collected, call Close method")
 		}
 	})
 
@@ -215,6 +222,10 @@ func (conn *Conn) cancelInterrupt() {
 func (conn *Conn) Prep(query string) *Stmt {
 	stmt, err := conn.Prepare(query)
 	if err != nil {
+		if ErrCode(err) == SQLITE_INTERRUPT {
+			// TODO: return a *Stmt that is always interrupted
+			return nil
+		}
 		panic(err)
 	}
 	return stmt
@@ -286,7 +297,7 @@ func (conn *Conn) prepare(query string, flags C.uint) (*Stmt, int, error) {
 	// TODO: only if Debug ?
 	runtime.SetFinalizer(stmt, func(stmt *Stmt) {
 		if stmt.conn != nil && !stmt.conn.closed {
-			panic(fmt.Sprintf("open *sqlite.Stmt %q garbage collected, call Finalize", query))
+			panic("open *sqlite.Stmt \"" + query + "\" garbage collected, call Finalize")
 		}
 	})
 
@@ -756,3 +767,28 @@ func (stmt *Stmt) GetLen(colName string) int {
 	}
 	return stmt.ColumnLen(col)
 }
+
+var (
+	sqliteInit sync.Once
+)
+
+func sqliteInitFn() {
+	if Logger != nil {
+		C.enable_logging()
+	}
+}
+
+//export log_fn
+func log_fn(_ unsafe.Pointer, code C.int, msg *C.char) {
+	var msgBytes []byte
+	if msg != nil {
+		str := C.GoString(msg) // TODO: do not copy msg.
+		msgBytes = []byte(str)
+	}
+	Logger(ErrorCode(code), msgBytes)
+}
+
+// Logger is written to by SQLite.
+// The Logger must be set before any connection is opened.
+// The msg slice is only valid for the duration of the call.
+var Logger func(code ErrorCode, msg []byte)
