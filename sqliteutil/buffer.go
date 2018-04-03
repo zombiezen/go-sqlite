@@ -283,12 +283,21 @@ func (bb *Buffer) Reset() {
 }
 
 func (bb *Buffer) Close() error {
-	stmt := bb.conn.Prep("DELETE FROM BlobBuffer WHERE rowid = $rowid;")
-	del := func(tblob tblob) {
+	close := func(tblob tblob) {
 		err := tblob.blob.Close()
 		if bb.err == nil {
 			bb.err = err
 		}
+	}
+	for _, tblob := range bb.blobs {
+		close(tblob)
+	}
+	for _, tblob := range bb.freelist {
+		close(tblob)
+	}
+
+	stmt := bb.conn.Prep("DELETE FROM BlobBuffer WHERE rowid = $rowid;")
+	del := func(tblob tblob) {
 		stmt.Reset()
 		stmt.SetInt64("$rowid", tblob.rowid)
 		if _, err := stmt.Step(); err != nil && bb.err == nil {

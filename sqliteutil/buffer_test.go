@@ -19,6 +19,7 @@ import (
 	"io"
 	"testing"
 
+	"crawshaw.io/iox/ioxtest"
 	"crawshaw.io/sqlite"
 )
 
@@ -122,4 +123,27 @@ func TestConcurrentBuffer(t *testing.T) {
 	b1a.Close()
 	b1b.Close()
 	b2.Close()
+}
+
+func TestBufferRand(t *testing.T) {
+	conn, err := sqlite.OpenConn(":memory:", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	buf, err := NewBufferSize(conn, 1<<18)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ft := ioxtest.Tester{
+		F1: buf,
+		F2: new(bytes.Buffer),
+		T:  t,
+	}
+	ft.Run()
+	if err := buf.Close(); err != nil {
+		t.Fatal(err)
+	}
 }
