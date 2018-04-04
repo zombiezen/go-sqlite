@@ -17,6 +17,7 @@ package sqlite
 // #include <blocking_step.h>
 // #include <sqlite3.h>
 // #include <stdlib.h>
+// #include <stdint.h>
 //
 // int wrap_blob_read(sqlite3_blob* blob, uintptr_t p, int n, int off) {
 //	return sqlite3_blob_read(blob, (void*)p, n, off);
