@@ -339,7 +339,8 @@ const (
 )
 
 // ErrCode extracts the SQLite error code from err.
-// If there is no error code, SQLITE_OK is returned.
+// If err is not a sqlite Error, SQLITE_ERROR is returned.
+// If err is nil, SQLITE_OK is returned.
 func ErrCode(err error) ErrorCode {
 	if err != nil {
 		if err, isError := err.(Error); isError {
