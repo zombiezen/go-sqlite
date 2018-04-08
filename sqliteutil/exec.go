@@ -13,7 +13,7 @@
 // OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 // Package sqliteutil provides utilities for working with SQLite.
-package sqliteutil
+package sqliteutil // import "crawshaw.io/sqlite/sqliteutil"
 
 import (
 	"fmt"
