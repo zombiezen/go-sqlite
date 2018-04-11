@@ -147,3 +147,62 @@ func TestDone(t *testing.T) {
 		t.Errorf("savepoint release function error code is %v, want SQLITE_INTERRUPT", code)
 	}
 }
+
+func TestReleaseTx(t *testing.T) {
+	conn1, err := sqlite.OpenConn("file::memory:?mode=memory&cache=shared", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn1.Close()
+
+	conn2, err := sqlite.OpenConn("file::memory:?mode=memory&cache=shared", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn2.Close()
+
+	Exec(conn1, "DROP TABLE t;", nil)
+	if err := Exec(conn1, "CREATE TABLE t (c1);", nil); err != nil {
+		t.Fatal(err)
+	}
+	countFn := func() int {
+		var count int
+		fn := func(stmt *sqlite.Stmt) error {
+			count = stmt.ColumnInt(0)
+			return nil
+		}
+		if err := Exec(conn2, "SELECT count(*) FROM t;", fn); err != nil {
+			t.Fatal(err)
+		}
+		return count
+	}
+	errNoSuccess := errors.New("succeed=false")
+	insert := func(succeed bool) (err error) {
+		defer Save(conn1)(&err)
+
+		if err := Exec(conn1, `INSERT INTO t VALUES ("hello");`, nil); err != nil {
+			t.Fatal(err)
+		}
+
+		if succeed {
+			return nil
+		}
+		return errNoSuccess
+	}
+
+	if err := insert(true); err != nil {
+		t.Fatal(err)
+	}
+	if got := countFn(); got != 1 {
+		t.Errorf("expecting 1 row, got %d", got)
+	}
+
+	if err := insert(false); err == nil {
+		t.Fatal(err)
+	}
+	// If the transaction is still open, countFn will get stuck
+	// on conn2 waiting for conn1's write lock to release.
+	if got := countFn(); got != 1 {
+		t.Errorf("expecting 1 row, got %d", got)
+	}
+}

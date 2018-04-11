@@ -85,6 +85,10 @@ func savepoint(conn *sqlite.Conn, name string) (releaseFn func(*error), err erro
 			if err != nil {
 				panic(err)
 			}
+			err = Exec(conn, fmt.Sprintf("RELEASE %q;", name), nil)
+			if err != nil {
+				panic(err)
+			}
 		}
 	}
 	return releaseFn, nil
