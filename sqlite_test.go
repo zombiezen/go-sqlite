@@ -277,3 +277,48 @@ func TestParallel(t *testing.T) {
 		t.Error("expecting second row")
 	}
 }
+
+func TestBindBytes(t *testing.T) {
+	c, err := sqlite.OpenConn(":memory:", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := c.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	stmt := c.Prep("CREATE TABLE IF NOT EXISTS bindbytes (c);")
+	if _, err := stmt.Step(); err != nil {
+		t.Fatal(err)
+	}
+	stmt = c.Prep("INSERT INTO bindbytes (c) VALUES ($bytes);")
+	stmt.SetText("$bytes", "column_value")
+	if _, err := stmt.Step(); err != nil {
+		t.Fatal(err)
+	}
+
+	stmt = c.Prep("SELECT count(*) FROM bindbytes WHERE c = $bytes;")
+	stmt.SetText("$bytes", "column_value")
+	if hasRow, err := stmt.Step(); err != nil {
+		t.Fatal(err)
+	} else if !hasRow {
+		t.Error("SetText: result has no row")
+	}
+	if got := stmt.ColumnInt(0); got != 1 {
+		t.Errorf("SetText: count is %d, want 1", got)
+	}
+
+	stmt.Reset()
+
+	stmt.SetBytes("$bytes", []byte("column_value"))
+	if hasRow, err := stmt.Step(); err != nil {
+		t.Fatal(err)
+	} else if !hasRow {
+		t.Error("SetBytes: result has no row")
+	}
+	if got := stmt.ColumnInt(0); got != 1 {
+		t.Errorf("SetBytes: count is %d, want 1", got)
+	}
+}

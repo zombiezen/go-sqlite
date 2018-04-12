@@ -35,8 +35,8 @@ package sqlite
 //
 // // Use a helper function here to avoid the cgo pointer detection
 // // logic treating SQLITE_TRANSIENT as a Go pointer.
-// static int transient_bind_blob(sqlite3_stmt* stmt, int col, char* p, int n) {
-//	return sqlite3_bind_blob(stmt, col, p, n, SQLITE_TRANSIENT);
+// static int transient_bind_text(sqlite3_stmt* stmt, int col, char* p, int n) {
+//	return sqlite3_bind_text(stmt, col, p, n, SQLITE_TRANSIENT);
 // }
 //
 // extern void log_fn(void* pArg, int code, char* msg);
@@ -555,7 +555,7 @@ func (stmt *Stmt) BindBytes(param int, value []byte) {
 	if len(value) != 0 {
 		v = (*C.char)(unsafe.Pointer(&value[0]))
 	}
-	res := C.transient_bind_blob(stmt.stmt, C.int(param), v, C.int(len(value)))
+	res := C.transient_bind_text(stmt.stmt, C.int(param), v, C.int(len(value)))
 	runtime.KeepAlive(value)
 	stmt.handleBindErr("BindBytes", res)
 }
