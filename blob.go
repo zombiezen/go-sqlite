@@ -64,7 +64,7 @@ func (conn *Conn) OpenBlob(dbn, table, column string, row int64, write bool) (*B
 		if err := conn.interrupted("Conn.OpenBlob", ""); err != nil {
 			return nil, err
 		}
-		switch res := C.sqlite3_blob_open(conn.conn, cdb, ctable, ccolumn, C.longlong(row), flags, &blob.blob); res {
+		switch res := C.sqlite3_blob_open(conn.conn, cdb, ctable, ccolumn, C.sqlite3_int64(row), flags, &blob.blob); res {
 		case C.SQLITE_LOCKED:
 			if res := C.wait_for_unlock_notify(conn.conn, conn.unlockNote); res != C.SQLITE_OK {
 				return nil, conn.reserr("Conn.OpenBlob(Wait)", "", res)

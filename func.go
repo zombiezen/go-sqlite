@@ -46,7 +46,7 @@ func (ctx Context) ResultInt64(v int64)    { C.sqlite3_result_int64(ctx.ptr, C.s
 func (ctx Context) ResultFloat(v float64)  { C.sqlite3_result_double(ctx.ptr, C.double(v)) }
 func (ctx Context) ResultNull()            { C.sqlite3_result_null(ctx.ptr) }
 func (ctx Context) ResultValue(v Value)    { C.sqlite3_result_value(ctx.ptr, v.ptr) }
-func (ctx Context) ResultZeroBlob(n int64) { C.sqlite3_result_zeroblob64(ctx.ptr, C.sqlite_uint64(n)) }
+func (ctx Context) ResultZeroBlob(n int64) { C.sqlite3_result_zeroblob64(ctx.ptr, C.sqlite3_uint64(n)) }
 func (ctx Context) ResultText(v string) {
 	var cv *C.char
 	if len(v) != 0 {

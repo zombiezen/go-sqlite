@@ -27,6 +27,8 @@ package sqlite
 // #cgo CFLAGS: -DSQLITE_USE_ALLOCA
 // #cgo CFLAGS: -DSQLITE_ENABLE_COLUMN_METADATA
 // #cgo linux LDFLAGS: -ldl -lm
+// #cgo openbsd LDFLAGS: -lm
+// #cgo openbsd CFLAGS: -std=c99
 //
 // #include <blocking_step.h>
 // #include <sqlite3.h>
@@ -530,7 +532,7 @@ func (stmt *Stmt) BindParamCount() int {
 // BindInt64 binds value to a numbered stmt parameter.
 // https://www.sqlite.org/c3ref/bind_blob.html
 func (stmt *Stmt) BindInt64(param int, value int64) {
-	res := C.sqlite3_bind_int64(stmt.stmt, C.int(param), C.longlong(value))
+	res := C.sqlite3_bind_int64(stmt.stmt, C.int(param), C.sqlite3_int64(value))
 	stmt.handleBindErr("BindInt64", res)
 }
 
@@ -540,7 +542,7 @@ func (stmt *Stmt) BindBool(param int, value bool) {
 	if value {
 		v = 1
 	}
-	res := C.sqlite3_bind_int64(stmt.stmt, C.int(param), C.longlong(v))
+	res := C.sqlite3_bind_int64(stmt.stmt, C.int(param), C.sqlite3_int64(v))
 	stmt.handleBindErr("BindBool", res)
 }
 
