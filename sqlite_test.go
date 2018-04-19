@@ -16,6 +16,9 @@ package sqlite_test
 
 import (
 	"context"
+	"io/ioutil"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -351,5 +354,53 @@ func TestExtendedCodes(t *testing.T) {
 	}
 	if got, want := sqlite.ErrCode(err), sqlite.SQLITE_CONSTRAINT_UNIQUE; got != want {
 		t.Errorf("got err=%s, want %s", got, want)
+	}
+}
+
+func TestJournalMode(t *testing.T) {
+	dir, err := ioutil.TempDir("", "crawshaw.io")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+
+	tests := []struct {
+		mode  string
+		flags sqlite.OpenFlags
+	}{
+		{
+			"delete",
+			sqlite.SQLITE_OPEN_READWRITE | sqlite.SQLITE_OPEN_CREATE,
+		},
+		{
+			"wal",
+			sqlite.SQLITE_OPEN_READWRITE | sqlite.SQLITE_OPEN_CREATE | sqlite.SQLITE_OPEN_WAL,
+		},
+		{
+			"wal",
+			0,
+		},
+	}
+
+	for _, test := range tests {
+		dbFile := filepath.Join(dir, "test-"+test.mode+".db")
+		c, err := sqlite.OpenConn(dbFile, test.flags)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			if err := c.Close(); err != nil {
+				t.Error(err)
+			}
+		}()
+		stmt := c.Prep("PRAGMA journal_mode;")
+		if hasRow, err := stmt.Step(); err != nil {
+			t.Fatal(err)
+		} else if !hasRow {
+			t.Error("PRAGMA journal_mode: has no row")
+		}
+		if got := stmt.GetText("journal_mode"); got != test.mode {
+			t.Errorf("journal_mode not set properly, got: %s, want: %s", got, test.mode)
+		}
 	}
 }
