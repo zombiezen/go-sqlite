@@ -133,6 +133,7 @@ func openConn(path string, flags OpenFlags) (*Conn, error) {
 		C.sqlite3_close_v2(conn.conn)
 		return nil, reserr("OpenConn", path, "", res)
 	}
+	C.sqlite3_extended_result_codes(conn.conn, 1)
 
 	// TODO: only if Debug ?
 	_, file, line, _ := runtime.Caller(2) // caller of OpenConn or Open

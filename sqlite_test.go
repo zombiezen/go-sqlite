@@ -322,3 +322,34 @@ func TestBindBytes(t *testing.T) {
 		t.Errorf("SetBytes: count is %d, want 1", got)
 	}
 }
+
+func TestExtendedCodes(t *testing.T) {
+	c, err := sqlite.OpenConn(":memory:", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := c.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	stmt := c.Prep("CREATE TABLE IF NOT EXISTS extcodes (c UNIQUE);")
+	if _, err := stmt.Step(); err != nil {
+		t.Fatal(err)
+	}
+	stmt = c.Prep("INSERT INTO extcodes (c) VALUES ($c);")
+	stmt.SetText("$c", "value1")
+	if _, err := stmt.Step(); err != nil {
+		t.Fatal(err)
+	}
+	stmt.Reset()
+	stmt.SetText("$c", "value1")
+	_, err = stmt.Step()
+	if err == nil {
+		t.Fatal("expected UNIQUE error, got nothing")
+	}
+	if got, want := sqlite.ErrCode(err), sqlite.SQLITE_CONSTRAINT_UNIQUE; got != want {
+		t.Errorf("got err=%s, want %s", got, want)
+	}
+}
