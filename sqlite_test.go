@@ -365,26 +365,44 @@ func TestJournalMode(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	tests := []struct {
+		db    string
 		mode  string
 		flags sqlite.OpenFlags
 	}{
 		{
+			"test-delete.db",
 			"delete",
 			sqlite.SQLITE_OPEN_READWRITE | sqlite.SQLITE_OPEN_CREATE,
 		},
 		{
+			"test-wal.db",
 			"wal",
 			sqlite.SQLITE_OPEN_READWRITE | sqlite.SQLITE_OPEN_CREATE | sqlite.SQLITE_OPEN_WAL,
 		},
 		{
+			"test-default-wal.db",
 			"wal",
+			0,
+		},
+		// memory databases can't have wal, only journal_mode=memory
+		{
+			":memory:",
+			"memory",
+			0,
+		},
+		// temp databases can't have wal, only journal_mode=delete
+		{
+			"",
+			"delete",
 			0,
 		},
 	}
 
 	for _, test := range tests {
-		dbFile := filepath.Join(dir, "test-"+test.mode+".db")
-		c, err := sqlite.OpenConn(dbFile, test.flags)
+		if test.db != ":memory:" && test.db != "" {
+			test.db = filepath.Join(dir, test.db)
+		}
+		c, err := sqlite.OpenConn(test.db, test.flags)
 		if err != nil {
 			t.Fatal(err)
 		}

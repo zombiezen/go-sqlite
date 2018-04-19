@@ -35,10 +35,6 @@ package sqlite
 // #include <stdlib.h>
 // #include <string.h>
 //
-// // Set typedefs for calling sqlite3_exec()
-// typedef int (*_sqlite_callback)(void*,int,char**,char**);
-// typedef char ** charPtrPtr;
-//
 // // Use a helper function here to avoid the cgo pointer detection
 // // logic treating SQLITE_TRANSIENT as a Go pointer.
 // static int transient_bind_text(sqlite3_stmt* stmt, int col, char* p, int n) {
@@ -149,16 +145,15 @@ func openConn(path string, flags OpenFlags) (*Conn, error) {
 	})
 
 	if flags&SQLITE_OPEN_WAL > 0 {
-		pragma := C.CString("PRAGMA journal_mode=wal")
-		defer C.free(unsafe.Pointer(pragma))
-		res = C.sqlite3_exec(conn.conn, pragma, C._sqlite_callback(nil), unsafe.Pointer(nil), C.charPtrPtr(nil))
-		if res != 0 {
-			extres := C.sqlite3_extended_errcode(conn.conn)
-			if extres != 0 {
-				res = extres
-			}
-			C.sqlite3_close_v2(conn.conn)
-			return nil, reserr("OpenConn", path, "", res)
+		stmt, _, err := conn.PrepareTransient("PRAGMA journal_mode=wal;")
+		if err != nil {
+			conn.Close()
+			return nil, err
+		}
+		defer stmt.Finalize()
+		if _, err := stmt.Step(); err != nil {
+			conn.Close()
+			return nil, err
 		}
 	}
 
