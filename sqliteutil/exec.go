@@ -115,6 +115,8 @@ func exec(stmt *sqlite.Stmt, resultFn func(stmt *sqlite.Stmt) error, args []inte
 			stmt.BindFloat(i, v.Float())
 		case reflect.String:
 			stmt.BindText(i, v.String())
+		case reflect.Invalid:
+			stmt.BindNull(i)
 		default:
 			if v.Kind() == reflect.Slice && v.Type().Elem().Kind() == reflect.Uint8 {
 				stmt.BindBytes(i, v.Bytes())

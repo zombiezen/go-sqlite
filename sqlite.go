@@ -712,6 +712,57 @@ func (stmt *Stmt) columnBytes(col int) []byte {
 	return (*[1 << 28]byte)(unsafe.Pointer(p))[:n:n]
 }
 
+// ColumnType are codes for each of the SQLite fundamental datatypes:
+//
+//   64-bit signed integer
+//   64-bit IEEE floating point number
+//   string
+//   BLOB
+//   NULL
+//
+// https://www.sqlite.org/c3ref/c_blob.html
+type ColumnType int
+
+const (
+	SQLITE_INTEGER = ColumnType(C.SQLITE_INTEGER)
+	SQLITE_FLOAT   = ColumnType(C.SQLITE_FLOAT)
+	SQLITE_TEXT    = ColumnType(C.SQLITE3_TEXT)
+	SQLITE_BLOB    = ColumnType(C.SQLITE_BLOB)
+	SQLITE_NULL    = ColumnType(C.SQLITE_NULL)
+)
+
+func (t ColumnType) String() string {
+	switch t {
+	case SQLITE_INTEGER:
+		return "SQLITE_INTEGER"
+	case SQLITE_FLOAT:
+		return "SQLITE_FLOAT"
+	case SQLITE_TEXT:
+		return "SQLITE_TEXT"
+	case SQLITE_BLOB:
+		return "SQLITE_BLOB"
+	case SQLITE_NULL:
+		return "SQLITE_NULL"
+	default:
+		return "<unknown sqlite datatype>"
+	}
+}
+
+// ColumnType returns the datatype code for the initial data
+// type of the result column. The returned value is one of:
+//
+//   SQLITE_INTEGER
+//   SQLITE_FLOAT
+//   SQLITE_TEXT
+//   SQLITE_BLOB
+//   SQLITE_NULL
+//
+// Column indicies start at 0.
+// https://www.sqlite.org/c3ref/column_blob.html
+func (stmt *Stmt) ColumnType(col int) ColumnType {
+	return ColumnType(C.sqlite3_column_type(stmt.stmt, C.int(col)))
+}
+
 // ColumnText returns a query result as a string.
 //
 // Column indicies start at 0.
