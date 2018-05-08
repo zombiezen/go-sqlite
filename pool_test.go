@@ -22,12 +22,23 @@ import (
 	"crawshaw.io/sqlite"
 )
 
-func TestPool(t *testing.T) {
-	const poolSize = 20
+const poolSize = 20
+
+// newMemPool returns new sqlite.Pool attached to new database opened in memory.
+//
+// the pool is initialized with size=poolSize.
+// any error is t.Fatal.
+func newMemPool(t *testing.T) *sqlite.Pool {
+	t.Helper()
 	dbpool, err := sqlite.Open("file::memory:?mode=memory", 0, poolSize)
 	if err != nil {
 		t.Fatal(err)
 	}
+	return dbpool
+}
+
+func TestPool(t *testing.T) {
+	dbpool := newMemPool(t)
 	defer func() {
 		if err := dbpool.Close(); err != nil {
 			t.Error(err)
@@ -94,5 +105,22 @@ func testInsert(t *testing.T, id string, dbpool *sqlite.Pool) {
 	}
 	if _, err := commit.Step(); err != nil {
 		t.Errorf("id=%s: COMMIT step: %v", id, err)
+	}
+}
+
+func TestPoolAfterClose(t *testing.T) {
+	// verify that Get after close never try to initialize a Conn and segfault
+	dbpool := newMemPool(t)
+
+	err := dbpool.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for i := 0; i < 10*poolSize; i++ {
+		conn := dbpool.Get(nil)
+		if conn != nil {
+			t.Fatal("dbpool: Get after Close -> !nil conn")
+		}
 	}
 }

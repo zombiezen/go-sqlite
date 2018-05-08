@@ -78,7 +78,10 @@ func Open(uri string, flags OpenFlags, poolSize int) (*Pool, error) {
 // details.
 func (p *Pool) Get(doneCh <-chan struct{}) *Conn {
 	select {
-	case conn := <-p.free:
+	case conn, ok := <-p.free:
+		if !ok {
+			return nil // pool is closed
+		}
 		conn.SetInterrupt(doneCh)
 		return conn
 	case <-doneCh:
