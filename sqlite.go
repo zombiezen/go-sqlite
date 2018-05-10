@@ -140,7 +140,7 @@ func openConn(path string, flags OpenFlags) (*Conn, error) {
 	runtime.SetFinalizer(conn, func(conn *Conn) {
 		if !conn.closed {
 			var buf [20]byte
-			panic(file + ":" + string(itoa(buf[:], int(line))) + ": *sqlite.Conn garbage collected, call Close method")
+			panic(file + ":" + string(itoa(buf[:], int64(line))) + ": *sqlite.Conn garbage collected, call Close method")
 		}
 	})
 

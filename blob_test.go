@@ -15,6 +15,8 @@
 package sqlite_test
 
 import (
+	"io"
+	"io/ioutil"
 	"reflect"
 	"sync"
 	"testing"
@@ -232,4 +234,100 @@ func TestConcurrentBlobWrites(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
+}
+
+func TestBlobClose(t *testing.T) {
+	c, err := sqlite.OpenConn(":memory:", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := c.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	if _, err := c.Prep("DROP TABLE IF EXISTS blobs;").Step(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Prep("CREATE TABLE blobs (col BLOB);").Step(); err != nil {
+		t.Fatal(err)
+	}
+
+	stmt := c.Prep("INSERT INTO blobs (col) VALUES ($col);")
+	stmt.SetZeroBlob("$col", 5)
+	if _, err := stmt.Step(); err != nil {
+		t.Fatal(err)
+	}
+	rowid := c.LastInsertRowID()
+	t.Logf("blobs rowid: %d", rowid)
+
+	b, err := c.OpenBlob("", "blobs", "col", rowid, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := b.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Close(); err == nil {
+		t.Error("no error on second close")
+	}
+	if _, err := b.WriteAt([]byte{1}, 0); err == nil {
+		t.Error("want error on write-after-close")
+	}
+	if _, err = b.ReadAt(make([]byte, 1), 0); err == nil {
+		t.Error("want error on read-after-close")
+	}
+}
+
+func TestBlobReadWrite(t *testing.T) {
+	c, err := sqlite.OpenConn(":memory:", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := c.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	if _, err := c.Prep("DROP TABLE IF EXISTS blobs;").Step(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Prep("CREATE TABLE blobs (col BLOB);").Step(); err != nil {
+		t.Fatal(err)
+	}
+
+	stmt := c.Prep("INSERT INTO blobs (col) VALUES ($col);")
+	stmt.SetZeroBlob("$col", 5)
+	if _, err := stmt.Step(); err != nil {
+		t.Fatal(err)
+	}
+	rowid := c.LastInsertRowID()
+	t.Logf("blobs rowid: %d", rowid)
+
+	b, err := c.OpenBlob("", "blobs", "col", rowid, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Close()
+
+	if _, err := b.Write([]byte{1, 2, 3}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Write([]byte{4, 5}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Write([]byte{6}); err != io.ErrShortWrite {
+		t.Errorf("Write past end of blob, want io.ErrShortWrite got: %v", err)
+	}
+	if _, err := b.Seek(0, 0); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := ioutil.ReadAll(b); err != nil {
+		t.Fatal(err)
+	} else if want := []byte{1, 2, 3, 4, 5}; !reflect.DeepEqual(got, want) {
+		t.Errorf("want %v, got %v", want, got)
+	}
 }

@@ -377,7 +377,7 @@ func (opType OpType) String() string {
 	switch opType {
 	default:
 		var buf [20]byte
-		return "SQLITE_UNKNOWN_OP_TYPE(" + string(itoa(buf[:], int(opType))) + ")"
+		return "SQLITE_UNKNOWN_OP_TYPE(" + string(itoa(buf[:], int64(opType))) + ")"
 	case SQLITE_INSERT:
 		return "SQLITE_INSERT"
 	case SQLITE_DELETE:
@@ -401,7 +401,7 @@ func (code ConflictType) String() string {
 	switch code {
 	default:
 		var buf [20]byte
-		return "SQLITE_UNKNOWN_CONFLICT_TYPE(" + string(itoa(buf[:], int(code))) + ")"
+		return "SQLITE_UNKNOWN_CONFLICT_TYPE(" + string(itoa(buf[:], int64(code))) + ")"
 	case SQLITE_CHANGESET_DATA:
 		return "SQLITE_CHANGESET_DATA"
 	case SQLITE_CHANGESET_NOTFOUND:
@@ -427,7 +427,7 @@ func (code ConflictAction) String() string {
 	switch code {
 	default:
 		var buf [20]byte
-		return "SQLITE_UNKNOWN_CONFLICT_ACTION(" + string(itoa(buf[:], int(code))) + ")"
+		return "SQLITE_UNKNOWN_CONFLICT_ACTION(" + string(itoa(buf[:], int64(code))) + ")"
 	case SQLITE_CHANGESET_OMIT:
 		return "SQLITE_CHANGESET_OMIT"
 	case SQLITE_CHANGESET_ABORT:

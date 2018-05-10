@@ -50,7 +50,7 @@ func (code ErrorCode) String() string {
 	switch code {
 	default:
 		var buf [20]byte
-		return "SQLITE_UNKNOWN_ERR(" + string(itoa(buf[:], int(code))) + ")"
+		return "SQLITE_UNKNOWN_ERR(" + string(itoa(buf[:], int64(code))) + ")"
 	case SQLITE_OK:
 		return "SQLITE_OK(not an error)"
 	case SQLITE_ROW:
@@ -351,7 +351,7 @@ func ErrCode(err error) ErrorCode {
 	return SQLITE_OK
 }
 
-func itoa(buf []byte, val int) []byte {
+func itoa(buf []byte, val int64) []byte {
 	i := len(buf) - 1
 	neg := false
 	if val < 0 {
