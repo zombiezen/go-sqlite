@@ -79,6 +79,7 @@ func TestPool(t *testing.T) {
 	} else {
 		t.Errorf("SELECT COUNT(*) reports not having a row")
 	}
+	stmt.Reset()
 }
 
 const insertCount = 120
