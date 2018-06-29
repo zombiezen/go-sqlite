@@ -265,8 +265,12 @@ func (conn *Conn) Prep(query string) *Stmt {
 // https://www.sqlite.org/c3ref/prepare.html
 func (conn *Conn) Prepare(query string) (*Stmt, error) {
 	if stmt := conn.stmts[query]; stmt != nil {
-		stmt.Reset()
-		stmt.ClearBindings()
+		if err := stmt.Reset(); err != nil {
+			return nil, err
+		}
+		if err := stmt.ClearBindings(); err != nil {
+			return nil, err
+		}
 		return stmt, nil
 	}
 	stmt, trailingBytes, err := conn.prepare(query, C.SQLITE_PREPARE_PERSISTENT)
