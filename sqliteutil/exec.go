@@ -38,6 +38,7 @@ import (
 //	floats   to BindFloat
 //	[]byte   to BindBytes
 //	string   to BindText
+//	bool     to BindBool
 //
 // All other kinds are printed using fmt.Sprintf("%v", v) and passed
 // to BindText.
@@ -120,6 +121,8 @@ func exec(stmt *sqlite.Stmt, resultFn func(stmt *sqlite.Stmt) error, args []inte
 			stmt.BindFloat(i, v.Float())
 		case reflect.String:
 			stmt.BindText(i, v.String())
+		case reflect.Bool:
+			stmt.BindBool(i, v.Bool())
 		case reflect.Invalid:
 			stmt.BindNull(i)
 		default:
