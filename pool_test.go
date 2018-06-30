@@ -46,6 +46,7 @@ func TestPool(t *testing.T) {
 	}()
 
 	c := dbpool.Get(nil)
+	c.Prep("DROP TABLE IF EXISTS footable;").Step()
 	if hasRow, err := c.Prep("CREATE TABLE footable (col1 integer);").Step(); err != nil {
 		t.Fatal(err)
 	} else if hasRow {
