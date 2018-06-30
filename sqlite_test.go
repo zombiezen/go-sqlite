@@ -440,6 +440,35 @@ func TestExtendedCodes(t *testing.T) {
 	}
 }
 
+type errWithMessage struct {
+	err error
+	msg string
+}
+
+func (e errWithMessage) Cause() error {
+	return e.err
+}
+
+func (e errWithMessage) Error() string {
+	return e.msg + ": " + e.err.Error()
+}
+
+func Test_WrappedErrors(t *testing.T) {
+	rawErr := sqlite.Error{
+		Code:  sqlite.SQLITE_INTERRUPT,
+		Loc:   "chao",
+		Query: "SELECT * FROM thieves",
+	}
+	if got, want := sqlite.ErrCode(rawErr), sqlite.SQLITE_INTERRUPT; got != want {
+		t.Errorf("got err=%s, want %s", got, want)
+	}
+
+	wrappedErr := errWithMessage{err: rawErr, msg: "Doing something"}
+	if got, want := sqlite.ErrCode(wrappedErr), sqlite.SQLITE_INTERRUPT; got != want {
+		t.Errorf("got err=%s, want %s", got, want)
+	}
+}
+
 func TestJournalMode(t *testing.T) {
 	dir, err := ioutil.TempDir("", "crawshaw.io")
 	if err != nil {

@@ -338,11 +338,25 @@ const (
 	SQLITE_AUTH_USER               = ErrorCode(C.SQLITE_AUTH_USER)
 )
 
+type causer interface {
+	Cause() error
+}
+
 // ErrCode extracts the SQLite error code from err.
 // If err is not a sqlite Error, SQLITE_ERROR is returned.
 // If err is nil, SQLITE_OK is returned.
+//
+// This function supports wrapped errors that implement
+//
+// 	interface { Cause() error }
+//
+// for errors from packages like https://github.com/pkg/errors
 func ErrCode(err error) ErrorCode {
 	if err != nil {
+		if ce, ok := err.(causer); ok {
+			return ErrCode(ce.Cause())
+		}
+
 		if err, isError := err.(Error); isError {
 			return err.Code
 		}
