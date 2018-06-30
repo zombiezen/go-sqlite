@@ -187,10 +187,15 @@ func (conn *Conn) Close() error {
 //
 //	ctx := context.WithTimeout(context.Background(), 100*time.Millisecond)
 //	conn.SetInterrupt(ctx.Done())
-func (conn *Conn) SetInterrupt(doneCh <-chan struct{}) {
+//
+// Any busy statements at the time SetInterrupt is called will be reset.
+//
+// SetInterrupt returns the old doneCh assigned to the connection.
+func (conn *Conn) SetInterrupt(doneCh <-chan struct{}) (oldDoneCh <-chan struct{}) {
 	if conn.closed {
 		panic("sqlite.Conn is closed")
 	}
+	oldDoneCh = conn.doneCh
 	conn.cancelInterrupt()
 	conn.doneCh = doneCh
 	for _, stmt := range conn.stmts {
@@ -199,7 +204,7 @@ func (conn *Conn) SetInterrupt(doneCh <-chan struct{}) {
 		}
 	}
 	if doneCh == nil {
-		return
+		return oldDoneCh
 	}
 	cancelCh := make(chan struct{})
 	conn.cancelCh = cancelCh
@@ -214,6 +219,7 @@ func (conn *Conn) SetInterrupt(doneCh <-chan struct{}) {
 			cancelCh <- struct{}{}
 		}
 	}()
+	return oldDoneCh
 }
 
 func (conn *Conn) interrupted(loc, query string) error {

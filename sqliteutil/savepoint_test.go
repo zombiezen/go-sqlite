@@ -15,6 +15,7 @@
 package sqliteutil
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -204,5 +205,67 @@ func TestReleaseTx(t *testing.T) {
 	// on conn2 waiting for conn1's write lock to release.
 	if got := countFn(); got != 1 {
 		t.Errorf("expecting 1 row, got %d", got)
+	}
+}
+
+func TestInterruptRollback(t *testing.T) {
+	conn, err := sqlite.OpenConn("file::memory:?mode=memory&cache=shared", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	if err = ExecScript(conn, `
+		DROP TABLE IF EXISTS t;
+		CREATE TABLE t (c);
+	`); err != nil {
+		t.Fatal(err)
+	}
+
+	releaseFn := Save(conn)
+	if err := Exec(conn, `INSERT INTO t (c) VALUES (1);`, nil); err != nil {
+		t.Fatal(err)
+	}
+	releaseFn(&err)
+	if err != nil {
+		t.Fatalf("relaseFn err: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	conn.SetInterrupt(ctx.Done())
+
+	releaseFn1 := Save(conn)
+	if err := Exec(conn, `INSERT INTO t (c) VALUES (2);`, nil); err != nil {
+		t.Fatal(err)
+	}
+	releaseFn2 := Save(conn)
+	if err := Exec(conn, `INSERT INTO t (c) VALUES (3);`, nil); err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	if err := Exec(conn, `INSERT INTO t (c) VALUES (3);`, nil); err == nil || sqlite.ErrCode(err) != sqlite.SQLITE_INTERRUPT {
+		t.Fatalf("want SQLITE_INTERRUPT, got %v", err)
+	}
+	err = context.Canceled
+	releaseFn2(&err) // given a real error, should rollback
+	if err != context.Canceled {
+		t.Fatalf("relaseFn2 err: %v", err)
+	}
+	var errNil error
+	releaseFn1(&errNil) // given no error, but we are interrupted, so should rollback
+	if errNil == nil {
+		t.Fatal("relaseFn1 errNil is still nil, should have been set to interrupt")
+	}
+	if sqlite.ErrCode(errNil) != sqlite.SQLITE_INTERRUPT {
+		t.Fatalf("relaseFn1 errNil=%v, want SQLITE_INTERRUPT", errNil)
+	}
+
+	conn.SetInterrupt(nil)
+	got, err := ResultInt(conn.Prep("SELECT count(*) FROM t;"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != 1 {
+		t.Errorf("want 1 row, got %d", got)
 	}
 }
