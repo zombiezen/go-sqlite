@@ -520,6 +520,13 @@ func (stmt *Stmt) Step() (rowReturned bool, err error) {
 		}
 		switch res := C.sqlite3_step(stmt.stmt); uint8(res) { // reduce to non-extended error code
 		case C.SQLITE_LOCKED:
+			if res != C.SQLITE_LOCKED_SHAREDCACHE {
+				// don't call wait_for_unlock_notify as it might deadlock, see:
+				// https://github.com/crawshaw/sqlite/issues/6
+				stmt.Reset()
+				return false, stmt.conn.reserr("Stmt.Step", stmt.query, res)
+			}
+
 			if res := C.wait_for_unlock_notify(stmt.conn.conn, stmt.conn.unlockNote); res != C.SQLITE_OK {
 				return false, stmt.conn.reserr("Stmt.Step(Wait)", stmt.query, res)
 			}
