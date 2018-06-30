@@ -193,16 +193,16 @@ func (conn *Conn) SetInterrupt(doneCh <-chan struct{}) {
 	}
 	conn.cancelInterrupt()
 	conn.doneCh = doneCh
-	if doneCh == nil {
-		return
-	}
-	cancelCh := make(chan struct{})
-	conn.cancelCh = cancelCh
 	for _, stmt := range conn.stmts {
 		if stmt.lastHasRow {
 			stmt.Reset()
 		}
 	}
+	if doneCh == nil {
+		return
+	}
+	cancelCh := make(chan struct{})
+	conn.cancelCh = cancelCh
 	go func() {
 		select {
 		case <-doneCh:
@@ -502,14 +502,15 @@ func (stmt *Stmt) ClearBindings() error {
 //
 //	http://www.sqlite.org/unlock_notify.html
 func (stmt *Stmt) Step() (rowReturned bool, err error) {
-	defer func() {
-		stmt.lastHasRow = rowReturned
-	}()
 	if stmt.bindErr != nil {
 		err = stmt.bindErr
 		stmt.bindErr = nil
+		stmt.Reset()
 		return false, err
 	}
+	defer func() {
+		stmt.lastHasRow = rowReturned
+	}()
 
 	for {
 		stmt.conn.count++
