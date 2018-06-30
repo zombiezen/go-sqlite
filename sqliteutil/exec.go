@@ -74,7 +74,12 @@ func Exec(conn *sqlite.Conn, query string, resultFn func(stmt *sqlite.Stmt) erro
 	if err != nil {
 		return annotateErr(err)
 	}
-	return exec(stmt, resultFn, args)
+	err = exec(stmt, resultFn, args)
+	resetErr := stmt.Reset()
+	if err == nil {
+		err = resetErr
+	}
+	return err
 }
 
 // ExecTransient executes an SQLite query without caching the
@@ -101,7 +106,7 @@ func ExecTransient(conn *sqlite.Conn, query string, resultFn func(stmt *sqlite.S
 	return exec(stmt, resultFn, args)
 }
 
-func exec(stmt *sqlite.Stmt, resultFn func(stmt *sqlite.Stmt) error, args []interface{}) error {
+func exec(stmt *sqlite.Stmt, resultFn func(stmt *sqlite.Stmt) error, args []interface{}) (err error) {
 	for i, arg := range args {
 		i++ // parameters are 1-indexed
 		v := reflect.ValueOf(arg)
