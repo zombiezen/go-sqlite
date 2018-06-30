@@ -197,6 +197,11 @@ func (conn *Conn) SetInterrupt(doneCh <-chan struct{}) {
 	}
 	cancelCh := make(chan struct{})
 	conn.cancelCh = cancelCh
+	for _, stmt := range conn.stmts {
+		if stmt.lastHasRow {
+			stmt.Reset()
+		}
+	}
 	go func() {
 		select {
 		case <-doneCh:
@@ -451,9 +456,6 @@ func (stmt *Stmt) Finalize() error {
 // https://www.sqlite.org/c3ref/reset.html
 func (stmt *Stmt) Reset() error {
 	stmt.conn.count++
-	if err := stmt.interrupted("Stmt.Reset"); err != nil {
-		return err
-	}
 	stmt.lastHasRow = false
 	res := C.sqlite3_reset(stmt.stmt)
 	return stmt.conn.reserr("Stmt.Reset", stmt.query, res)
@@ -511,6 +513,7 @@ func (stmt *Stmt) Step() (rowReturned bool, err error) {
 	for {
 		stmt.conn.count++
 		if err := stmt.interrupted("Stmt.Step"); err != nil {
+			stmt.Reset()
 			return false, err
 		}
 		switch res := C.sqlite3_step(stmt.stmt); uint8(res) { // reduce to non-extended error code

@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	"crawshaw.io/sqlite"
+	"crawshaw.io/sqlite/sqliteutil"
 )
 
 func TestConn(t *testing.T) {
@@ -167,6 +168,80 @@ func TestStmtInterrupt(t *testing.T) {
 	if got := sqlite.ErrCode(err); got != sqlite.SQLITE_INTERRUPT {
 		t.Errorf("Step err=%v, want SQLITE_INTERRUPT", got)
 	}
+}
+
+func TestInterruptStepReset(t *testing.T) {
+	c, err := sqlite.OpenConn(":memory:", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := c.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	err = sqliteutil.ExecScript(c, `CREATE TABLE resetint (c);
+INSERT INTO resetint (c) VALUES (1);
+INSERT INTO resetint (c) VALUES (2);
+INSERT INTO resetint (c) VALUES (3);`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	c.SetInterrupt(ctx.Done())
+
+	stmt := c.Prep("SELECT * FROM resetint;")
+	if _, err := stmt.Step(); err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	// next Step needs to reset stmt
+	if _, err := stmt.Step(); sqlite.ErrCode(err) != sqlite.SQLITE_INTERRUPT {
+		t.Fatalf("want SQLITE_INTERRUPT, got %v", err)
+	}
+	c.SetInterrupt(nil)
+	stmt = c.Prep("SELECT c FROM resetint ORDER BY c;")
+	if _, err := stmt.Step(); err != nil {
+		t.Fatalf("statement after interrupt reset failed: %v", err)
+	}
+	stmt.Reset()
+}
+
+func TestInterruptReset(t *testing.T) {
+	c, err := sqlite.OpenConn(":memory:", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := c.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	err = sqliteutil.ExecScript(c, `CREATE TABLE resetint (c);
+INSERT INTO resetint (c) VALUES (1);
+INSERT INTO resetint (c) VALUES (2);
+INSERT INTO resetint (c) VALUES (3);`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	c.SetInterrupt(ctx.Done())
+
+	stmt := c.Prep("SELECT * FROM resetint;")
+	if _, err := stmt.Step(); err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	c.SetInterrupt(nil)
+	stmt = c.Prep("SELECT c FROM resetint ORDER BY c;")
+	if _, err := stmt.Step(); err != nil {
+		t.Fatalf("statement after interrupt reset failed: %v", err)
+	}
+	stmt.Reset()
 }
 
 func TestTrailingBytes(t *testing.T) {
