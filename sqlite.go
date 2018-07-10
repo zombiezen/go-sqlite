@@ -565,6 +565,27 @@ func (stmt *Stmt) findBindName(loc string, param string) int {
 	return pos
 }
 
+// DataCount returns the number of columns in the current row of the result
+// set of prepared statement.
+// https://sqlite.org/c3ref/data_count.html
+func (stmt *Stmt) DataCount() int {
+	return int(C.sqlite3_data_count(stmt.stmt))
+}
+
+// ColumnCount returns the number of columns in the result set returned by the
+// prepared statement.
+// https://sqlite.org/c3ref/column_count.html
+func (stmt *Stmt) ColumnCount() int {
+	return int(C.sqlite3_column_count(stmt.stmt))
+}
+
+// ColumnName returns the name assigned to a particular column in the result
+// set of a SELECT statement.
+// https://sqlite.org/c3ref/column_name.html
+func (stmt *Stmt) ColumnName(col int) string {
+	return C.GoString((*C.char)(unsafe.Pointer(C.sqlite3_column_name(stmt.stmt, C.int(col)))))
+}
+
 // BindParamCount reports the number of parameters in stmt.
 // https://www.sqlite.org/c3ref/bind_parameter_count.html
 func (stmt *Stmt) BindParamCount() int {
