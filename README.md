@@ -29,7 +29,7 @@ func main() {
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
-func handle(w http.ResponseWriter, r *http.Request) {
+func handler(w http.ResponseWriter, r *http.Request) {
 	conn := dbpool.Get(r.Context().Done())
 	if conn == nil {
 		return
