@@ -17,6 +17,8 @@ package sqliteutil
 import (
 	"context"
 	"errors"
+	"io/ioutil"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -267,5 +269,59 @@ func TestInterruptRollback(t *testing.T) {
 	}
 	if got != 1 {
 		t.Errorf("want 1 row, got %d", got)
+	}
+}
+
+func TestBusySnapshot(t *testing.T) {
+	dir, err := ioutil.TempDir("", "sqliteutil-test-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := filepath.Join(dir, "busysnapshot.db")
+
+	// No SQLITE_OPEN_SHAREDCACHE.
+	flags := sqlite.SQLITE_OPEN_READWRITE | sqlite.SQLITE_OPEN_CREATE | sqlite.SQLITE_OPEN_WAL
+	conn0, err := sqlite.OpenConn(db, flags)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn0.Close()
+
+	conn1, err := sqlite.OpenConn(db, flags)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn1.Close()
+
+	if err = ExecScript(conn0, `
+		DROP TABLE IF EXISTS t;
+		CREATE TABLE t (c, b BLOB);
+		INSERT INTO t (c, b) VALUES (4, "hi");
+	`); err != nil {
+		t.Fatal(err)
+	}
+
+	conn0Release0 := Save(conn0)
+
+	c, err := ResultInt(conn0.Prep("SELECT count(*) FROM t WHERE c > 3;"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// An insert on conn1 invalidates the deferred transaction on conn0.
+	if err := Exec(conn1, "INSERT INTO t (c) VALUES (4);", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	stmt := conn0.Prep("UPDATE t SET c = $c WHERE c = 4;")
+	stmt.SetInt64("$c", int64(c))
+	_, conn0Err := stmt.Step()
+	if sqlite.ErrCode(conn0Err) != sqlite.SQLITE_BUSY_SNAPSHOT {
+		t.Fatalf("want SQLITE_BUSY_SNAPSHOT, got: %v", conn0Err)
+	}
+
+	conn0Release0(&conn0Err)
+	if sqlite.ErrCode(conn0Err) != sqlite.SQLITE_BUSY_SNAPSHOT {
+		t.Fatalf("after savepoint want SQLITE_BUSY_SNAPSHOT, got: %v", conn0Err)
 	}
 }
