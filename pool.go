@@ -14,6 +14,8 @@
 
 package sqlite
 
+import "sync"
+
 // Pool is a pool of SQLite connections.
 //
 // It is safe for use by multiple goroutines concurrently.
@@ -41,8 +43,10 @@ type Pool struct {
 	checkReset bool
 
 	free   chan *Conn
-	all    []*Conn
 	closed chan struct{}
+
+	allMu sync.Mutex
+	all   map[*Conn]struct{}
 }
 
 // Open opens a fixed-size pool of SQLite connections.
@@ -71,6 +75,9 @@ func Open(uri string, flags OpenFlags, poolSize int) (*Pool, error) {
 		closed:     make(chan struct{}),
 	}
 
+	p.allMu.Lock()
+	defer p.allMu.Unlock()
+	p.all = make(map[*Conn]struct{})
 	for i := 0; i < poolSize; i++ {
 		conn, err := openConn(uri, flags)
 		if err != nil {
@@ -78,7 +85,7 @@ func Open(uri string, flags OpenFlags, poolSize int) (*Pool, error) {
 			return nil, err
 		}
 		p.free <- conn
-		p.all = append(p.all, conn)
+		p.all[conn] = struct{}{}
 	}
 
 	return p, nil
@@ -122,23 +129,34 @@ func (p *Pool) Put(conn *Conn) {
 		}
 	}
 
+	p.allMu.Lock()
+	_, found := p.all[conn]
+	p.allMu.Unlock()
+
+	if !found {
+		panic("sqlite.Pool.Put: connection not created by this pool")
+	}
+
 	conn.SetInterrupt(nil)
 	select {
 	case p.free <- conn:
 	default:
-		panic("no space in Pool; Get/Put mismatch")
 	}
 }
 
 // Close closes all the connections in the Pool.
 func (p *Pool) Close() (err error) {
 	close(p.closed)
-	for _, conn := range p.all {
+
+	p.allMu.Lock()
+	for conn := range p.all {
 		err2 := conn.Close()
 		if err == nil {
 			err = err2
 		}
 	}
+	p.allMu.Unlock()
+
 	close(p.free)
 	for range p.free {
 	}

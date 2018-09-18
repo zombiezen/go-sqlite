@@ -217,3 +217,27 @@ func TestSharedCacheLock(t *testing.T) {
 	// TODO: It is possible for stmt.Reset to return SQLITE_LOCKED.
 	//       Work out why and find a way to test it.
 }
+
+func TestPoolPutMatch(t *testing.T) {
+	dbpool0 := newMemPool(t)
+	dbpool1 := newMemPool(t)
+	defer func() {
+		if err := dbpool0.Close(); err != nil {
+			t.Error(err)
+		}
+		if err := dbpool1.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	func() {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("expect put mismatch panic, got none")
+			}
+		}()
+
+		c := dbpool0.Get(nil)
+		dbpool1.Put(c)
+	}()
+}
