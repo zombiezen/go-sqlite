@@ -322,4 +322,7 @@ func TestPatchsetApply(t *testing.T) {
 	if code := sqlite.ErrCode(err); code != sqlite.SQLITE_ABORT {
 		t.Errorf("conflicting changeset Apply error is %v, want SQLITE_ABORT", err)
 	}
+	if !haveConflict {
+		t.Error("no conflict found")
+	}
 }
