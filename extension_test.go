@@ -125,6 +125,6 @@ func TestLoadExtension(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got, want := stmt.ColumnText(0), "Hello, World!"; got != want {
-		t.Error("failed to load extension, got: %s, want: %s", got, want)
+		t.Errorf("failed to load extension, got: %s, want: %s", got, want)
 	}
 }
