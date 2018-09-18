@@ -465,7 +465,20 @@ func (stmt *Stmt) Finalize() error {
 func (stmt *Stmt) Reset() error {
 	stmt.conn.count++
 	stmt.lastHasRow = false
-	res := C.sqlite3_reset(stmt.stmt)
+	var res C.int
+	for {
+		res = C.sqlite3_reset(stmt.stmt)
+		if res != C.SQLITE_LOCKED_SHAREDCACHE {
+			break
+		}
+		// An SQLITE_LOCKED_SHAREDCACHE error has been seen from sqlite3_reset
+		// in the wild, but so far has eluded exact test case replication.
+		// TODO: write a test for this.
+		if res := C.wait_for_unlock_notify(stmt.conn.conn, stmt.conn.unlockNote); res != C.SQLITE_OK {
+			return stmt.lockedError("Stmt.Reset(Wait)", res)
+		}
+
+	}
 	return stmt.conn.reserr("Stmt.Reset", stmt.query, res)
 }
 
@@ -531,11 +544,12 @@ func (stmt *Stmt) Step() (rowReturned bool, err error) {
 				// don't call wait_for_unlock_notify as it might deadlock, see:
 				// https://github.com/crawshaw/sqlite/issues/6
 				stmt.Reset()
-				return false, stmt.conn.reserr("Stmt.Step", stmt.query, res)
+
+				return false, stmt.lockedError("Stmt.Step", res)
 			}
 
 			if res := C.wait_for_unlock_notify(stmt.conn.conn, stmt.conn.unlockNote); res != C.SQLITE_OK {
-				return false, stmt.conn.reserr("Stmt.Step(Wait)", stmt.query, res)
+				return false, stmt.lockedError("Stmt.Step(Wait)", res)
 			}
 			C.sqlite3_reset(stmt.stmt)
 			// loop
@@ -550,6 +564,20 @@ func (stmt *Stmt) Step() (rowReturned bool, err error) {
 			return false, stmt.conn.extreserr("Stmt.Step", stmt.query, res)
 		}
 	}
+}
+
+func (stmt *Stmt) lockedError(loc string, res C.int) error {
+	msg := ""
+	for _, stmt := range stmt.conn.stmts {
+		if !stmt.lastHasRow {
+			continue
+		}
+		if msg == "" {
+			msg = "other open queries:"
+		}
+		msg += "\n\t" + stmt.query
+	}
+	return reserr(loc, stmt.query, msg, res)
 }
 
 func (stmt *Stmt) handleBindErr(loc string, res C.int) {

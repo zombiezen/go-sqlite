@@ -16,10 +16,15 @@ package sqlite_test
 
 import (
 	"fmt"
+	"io/ioutil"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"crawshaw.io/sqlite"
+	"crawshaw.io/sqlite/sqliteutil"
 )
 
 const poolSize = 20
@@ -125,4 +130,90 @@ func TestPoolAfterClose(t *testing.T) {
 			t.Fatal("dbpool: Get after Close -> !nil conn")
 		}
 	}
+}
+
+func TestSharedCacheLock(t *testing.T) {
+	dir, err := ioutil.TempDir("", "sqlite-test-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+
+	dbFile := filepath.Join(dir, "awal.db")
+
+	c0, err := sqlite.OpenConn(dbFile, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := c0.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	err = sqliteutil.ExecScript(c0, `
+		DROP TABLE IF EXISTS t;
+		CREATE TABLE t (c, content BLOB);
+		DROP TABLE IF EXISTS t2;
+		CREATE TABLE t2 (c);
+		INSERT INTO t2 (c) VALUES ("hello");
+		`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	c1, err := sqlite.OpenConn(dbFile, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := c1.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	c0Lock := func() {
+		if _, err := c0.Prep("BEGIN;").Step(); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := c0.Prep("INSERT INTO t (c, content) VALUES (0, 'hi');").Step(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c0Unlock := func() {
+		if err := sqliteutil.Exec(c0, "COMMIT;", nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	c0Lock()
+
+	stmt := c1.Prep("INSERT INTO t (c) VALUES (1);")
+
+	done := make(chan struct{})
+	go func() {
+		if _, err := stmt.Step(); err != nil {
+			t.Fatal(err)
+		}
+		close(done)
+	}()
+
+	time.Sleep(10 * time.Millisecond)
+	select {
+	case <-done:
+		t.Error("insert done while transaction was held")
+	default:
+	}
+
+	c0Unlock()
+
+	// End the initial transaction, allowing the goroutine to complete
+	select {
+	case <-done:
+	case <-time.After(500 * time.Millisecond):
+		t.Error("second connection insert not completing")
+	}
+
+	// TODO: It is possible for stmt.Reset to return SQLITE_LOCKED.
+	//       Work out why and find a way to test it.
 }
