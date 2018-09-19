@@ -22,6 +22,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"crawshaw.io/sqlite"
 	"crawshaw.io/sqlite/sqliteutil"
@@ -453,7 +454,7 @@ func (e errWithMessage) Error() string {
 	return e.msg + ": " + e.err.Error()
 }
 
-func Test_WrappedErrors(t *testing.T) {
+func TestWrappedErrors(t *testing.T) {
 	rawErr := sqlite.Error{
 		Code:  sqlite.SQLITE_INTERRUPT,
 		Loc:   "chao",
@@ -533,4 +534,98 @@ func TestJournalMode(t *testing.T) {
 			t.Errorf("journal_mode not set properly, got: %s, want: %s", got, test.mode)
 		}
 	}
+}
+
+func TestBusyTimeout(t *testing.T) {
+	dir, err := ioutil.TempDir("", "crawshaw.io")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+
+	db := filepath.Join(dir, "busytest.db")
+
+	flags := sqlite.SQLITE_OPEN_READWRITE | sqlite.SQLITE_OPEN_CREATE | sqlite.SQLITE_OPEN_WAL
+
+	conn0, err := sqlite.OpenConn(db, flags)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := conn0.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	conn1, err := sqlite.OpenConn(db, flags)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := conn1.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	err = sqliteutil.ExecScript(conn0, `
+		CREATE TABLE t (c);
+		INSERT INTO t (c) VALUES (1);
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	c0Lock := func() {
+		if _, err := conn0.Prep("BEGIN;").Step(); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := conn0.Prep("INSERT INTO t (c) VALUES (2);").Step(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c0Unlock := func() {
+		if _, err := conn0.Prep("COMMIT;").Step(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	c0Lock()
+	done := make(chan struct{})
+	go func() {
+		_, err = conn1.Prep("INSERT INTO t (c) VALUES (3);").Step()
+		if err != nil {
+			t.Errorf("insert failed: %v", err)
+		}
+		close(done)
+	}()
+
+	time.Sleep(10 * time.Millisecond)
+	select {
+	case <-done:
+		t.Errorf("done before unlock")
+	default:
+	}
+
+	c0Unlock()
+	<-done
+
+	c0Lock()
+	done = make(chan struct{})
+	go func() {
+		conn1.SetBusyTimeout(5 * time.Millisecond)
+		_, err = conn1.Prep("INSERT INTO t (c) VALUES (4);").Step()
+		if sqlite.ErrCode(err) != sqlite.SQLITE_BUSY {
+			t.Errorf("want SQLITE_BUSY got %v", err)
+		}
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(1 * time.Second):
+		t.Errorf("short busy timeout got stuck")
+	}
+
+	c0Unlock()
+	<-done
 }

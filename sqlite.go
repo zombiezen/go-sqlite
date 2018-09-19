@@ -53,6 +53,7 @@ import (
 	"bytes"
 	"runtime"
 	"sync"
+	"time"
 	"unsafe"
 )
 
@@ -160,6 +161,10 @@ func openConn(path string, flags OpenFlags) (*Conn, error) {
 		}
 	}
 
+	// Large timeout as Go programs should control timeouts
+	// using SetInterrupt. Documented in SetBusyTimeout.
+	conn.SetBusyTimeout(10 * time.Second)
+
 	return conn, nil
 }
 
@@ -221,6 +226,16 @@ func (conn *Conn) SetInterrupt(doneCh <-chan struct{}) (oldDoneCh <-chan struct{
 		}
 	}()
 	return oldDoneCh
+}
+
+// SetBusyTimeout sets a busy handler that sleeps for up to d to acquire a lock.
+//
+// By default, a large busy timeout (10s) is set on the assumption that
+// Go programs use a context object via SetInterrupt to control timeouts.
+//
+// https://www.sqlite.org/c3ref/busy_timeout.html
+func (conn *Conn) SetBusyTimeout(d time.Duration) {
+	C.sqlite3_busy_timeout(conn.conn, C.int(d/time.Millisecond))
 }
 
 func (conn *Conn) interrupted(loc, query string) error {
