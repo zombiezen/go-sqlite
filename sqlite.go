@@ -103,7 +103,6 @@ const (
 //
 //	SQLITE_OPEN_READWRITE
 //	SQLITE_OPEN_CREATE
-//	SQLITE_OPEN_SHAREDCACHE
 //	SQLITE_OPEN_WAL
 //	SQLITE_OPEN_URI
 //	SQLITE_OPEN_NOMUTEX
@@ -116,7 +115,7 @@ func OpenConn(path string, flags OpenFlags) (*Conn, error) {
 func openConn(path string, flags OpenFlags) (*Conn, error) {
 	sqliteInit.Do(sqliteInitFn)
 	if flags == 0 {
-		flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_SHAREDCACHE | SQLITE_OPEN_WAL | SQLITE_OPEN_URI | SQLITE_OPEN_NOMUTEX
+		flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_WAL | SQLITE_OPEN_URI | SQLITE_OPEN_NOMUTEX
 	}
 	conn := &Conn{
 		stmts: make(map[string]*Stmt),

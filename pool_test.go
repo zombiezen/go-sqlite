@@ -35,7 +35,8 @@ const poolSize = 20
 // any error is t.Fatal.
 func newMemPool(t *testing.T) *sqlite.Pool {
 	t.Helper()
-	dbpool, err := sqlite.Open("file::memory:?mode=memory", 0, poolSize)
+	flags := sqlite.SQLITE_OPEN_READWRITE | sqlite.SQLITE_OPEN_CREATE | sqlite.SQLITE_OPEN_URI | sqlite.SQLITE_OPEN_NOMUTEX | sqlite.SQLITE_OPEN_SHAREDCACHE
+	dbpool, err := sqlite.Open("file::memory:?mode=memory", flags, poolSize)
 	if err != nil {
 		t.Fatal(err)
 	}

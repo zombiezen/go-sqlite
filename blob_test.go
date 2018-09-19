@@ -107,11 +107,12 @@ func TestBlob(t *testing.T) {
 }
 
 func TestConcurrentBlobSpins(t *testing.T) {
-	c, err := sqlite.OpenConn("file::memory:?mode=memory", 0)
+	flags := sqlite.SQLITE_OPEN_READWRITE | sqlite.SQLITE_OPEN_CREATE | sqlite.SQLITE_OPEN_URI | sqlite.SQLITE_OPEN_NOMUTEX | sqlite.SQLITE_OPEN_SHAREDCACHE
+	c, err := sqlite.OpenConn("file::memory:?mode=memory", flags)
 	if err != nil {
 		t.Fatal(err)
 	}
-	c2, err := sqlite.OpenConn("file::memory:?mode=memory", 0)
+	c2, err := sqlite.OpenConn("file::memory:?mode=memory", flags)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,8 +170,10 @@ func TestConcurrentBlobSpins(t *testing.T) {
 // TestConcurrentBlobWrites looks for unexpected SQLITE_LOCKED errors
 // when using the (default) shared cache.
 func TestConcurrentBlobWrites(t *testing.T) {
+	flags := sqlite.SQLITE_OPEN_READWRITE | sqlite.SQLITE_OPEN_CREATE | sqlite.SQLITE_OPEN_URI | sqlite.SQLITE_OPEN_NOMUTEX | sqlite.SQLITE_OPEN_SHAREDCACHE
+
 	const numBlobs = 5
-	c, err := sqlite.OpenConn("file::memory:?mode=memory", 0)
+	c, err := sqlite.OpenConn("file::memory:?mode=memory", flags)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +210,7 @@ func TestConcurrentBlobWrites(t *testing.T) {
 			b := make([]byte, 1024)
 			b[0] = byte(i)
 
-			c, err := sqlite.OpenConn("file::memory:?mode=memory", 0)
+			c, err := sqlite.OpenConn("file::memory:?mode=memory", flags)
 			if err != nil {
 				t.Fatal(err)
 			}

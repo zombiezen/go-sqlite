@@ -54,17 +54,10 @@ type Pool struct {
 //
 //	SQLITE_OPEN_READWRITE
 //	SQLITE_OPEN_CREATE
-//	SQLITE_OPEN_SHAREDCACHE
 //	SQLITE_OPEN_WAL
 //	SQLITE_OPEN_URI
 //	SQLITE_OPEN_NOMUTEX
-//
-// The pool is always created with the shared cache enabled.
 func Open(uri string, flags OpenFlags, poolSize int) (*Pool, error) {
-	if flags == 0 {
-		flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_WAL | SQLITE_OPEN_URI | SQLITE_OPEN_NOMUTEX
-	}
-	flags |= SQLITE_OPEN_SHAREDCACHE
 	if uri == ":memory:" {
 		return nil, strerror{msg: `sqlite: ":memory:" does not work with multiple connections, use "file::memory:?mode=memory"`}
 	}
