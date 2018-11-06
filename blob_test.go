@@ -15,6 +15,8 @@
 package sqlite_test
 
 import (
+	"bytes"
+	"compress/gzip"
 	"io"
 	"io/ioutil"
 	"reflect"
@@ -332,5 +334,66 @@ func TestBlobReadWrite(t *testing.T) {
 		t.Fatal(err)
 	} else if want := []byte{1, 2, 3, 4, 5}; !reflect.DeepEqual(got, want) {
 		t.Errorf("want %v, got %v", want, got)
+	}
+}
+
+// See https://github.com/golang/go/issues/28606
+func TestBlobPtrs(t *testing.T) {
+	c, err := sqlite.OpenConn(":memory:", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := c.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	if _, err := c.Prep("DROP TABLE IF EXISTS blobs;").Step(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Prep("CREATE TABLE blobs (col BLOB);").Step(); err != nil {
+		t.Fatal(err)
+	}
+
+	buf := new(bytes.Buffer)
+	gzw := gzip.NewWriter(buf)
+	gzw.Write([]byte("hello"))
+	gzw.Close()
+	n := buf.Len()
+
+	stmt := c.Prep("INSERT INTO blobs (col) VALUES ($col);")
+	stmt.SetZeroBlob("$col", int64(n))
+	if _, err := stmt.Step(); err != nil {
+		t.Fatal(err)
+	}
+	rowid := c.LastInsertRowID()
+	t.Logf("blobs rowid: %d", rowid)
+
+	blob, err := c.OpenBlob("", "blobs", "col", rowid, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer blob.Close()
+
+	gzw = gzip.NewWriter(blob)
+	gzw.Write([]byte("hello"))
+	gzw.Close()
+
+	blob.Seek(0, 0)
+
+	gzr, err := gzip.NewReader(blob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := ioutil.ReadAll(gzr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(b); got != "hello" {
+		t.Errorf("read %q, want %q", got, "hello")
+	}
+	if err := gzr.Close(); err != nil {
+		t.Fatal(err)
 	}
 }

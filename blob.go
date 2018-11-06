@@ -18,14 +18,9 @@ package sqlite
 // #include <sqlite3.h>
 // #include <stdlib.h>
 // #include <stdint.h>
-//
-// int wrap_blob_read(sqlite3_blob* blob, uintptr_t p, int n, int off) {
-//	return sqlite3_blob_read(blob, (void*)p, n, off);
-// }
 import "C"
 import (
 	"io"
-	"runtime"
 	"unsafe"
 )
 
@@ -93,21 +88,6 @@ type Blob struct {
 	size int64
 }
 
-func (blob *Blob) readAt(p []byte, off int64) C.int {
-	n := len(p)
-	// This is incorrect. TODO: Remove when we can.
-	//
-	// We should pass unsafe.Pointer directly to sqlite3_blob_read,
-	// this lets the Go runtime pin the memory correctly.
-	// However with Go 1.10 we see a particularly nasty variant of
-	// https://golang.org/issue/14210, so until its resolved, we
-	// rely on the fact that this memory won't move anywhere yet.
-	pp := uintptr(unsafe.Pointer(&p[0]))
-	res := C.wrap_blob_read(blob.blob, C.uintptr_t(pp), C.int(n), C.int(off))
-	runtime.KeepAlive(p)
-	return res
-}
-
 // https://www.sqlite.org/c3ref/blob_read.html
 func (blob *Blob) ReadAt(p []byte, off int64) (n int, err error) {
 	if blob.blob == nil {
@@ -117,6 +97,8 @@ func (blob *Blob) ReadAt(p []byte, off int64) (n int, err error) {
 		return 0, err
 	}
 	res := blob.readAt(p, off)
+	n := C.int(len(p))
+	res := C.sqlite3_blob_read(blob.blob, unsafe.Pointer(&p[0]), n, C.int(off))
 	if err := blob.conn.reserr("Blob.ReadAt", "", res); err != nil {
 		return 0, err
 	}
@@ -131,8 +113,8 @@ func (blob *Blob) WriteAt(p []byte, off int64) (n int, err error) {
 	if err := blob.conn.interrupted("Blob.WriteAt", ""); err != nil {
 		return 0, err
 	}
-	v := unsafe.Pointer(&p[0])
-	res := C.sqlite3_blob_write(blob.blob, v, C.int(len(p)), C.int(off))
+	lenp := C.int(len(p))
+	res := C.sqlite3_blob_write(blob.blob, unsafe.Pointer(&p[0]), lenp, C.int(off))
 	if err := blob.conn.reserr("Blob.WriteAt", "", res); err != nil {
 		return 0, err
 	}
