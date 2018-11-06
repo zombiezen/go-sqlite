@@ -96,9 +96,8 @@ func (blob *Blob) ReadAt(p []byte, off int64) (n int, err error) {
 	if err := blob.conn.interrupted("Blob.ReadAt", ""); err != nil {
 		return 0, err
 	}
-	res := blob.readAt(p, off)
-	n := C.int(len(p))
-	res := C.sqlite3_blob_read(blob.blob, unsafe.Pointer(&p[0]), n, C.int(off))
+	lenp := C.int(len(p))
+	res := C.sqlite3_blob_read(blob.blob, unsafe.Pointer(&p[0]), lenp, C.int(off))
 	if err := blob.conn.reserr("Blob.ReadAt", "", res); err != nil {
 		return 0, err
 	}
