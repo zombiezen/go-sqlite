@@ -791,7 +791,17 @@ func (stmt *Stmt) columnBytes(col int) []byte {
 		return nil
 	}
 	n := stmt.ColumnLen(col)
-	return (*[1 << 28]byte)(unsafe.Pointer(p))[:n:n]
+
+	slice := struct {
+		data unsafe.Pointer
+		len  int
+		cap  int
+	}{
+		data: unsafe.Pointer(p),
+		len:  n,
+		cap:  n,
+	}
+	return *(*[]byte)(unsafe.Pointer(&slice))
 }
 
 // ColumnType are codes for each of the SQLite fundamental datatypes:
