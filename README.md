@@ -2,7 +2,7 @@
 
 [![GoDoc](https://godoc.org/crawshaw.io/sqlite?status.svg)](https://godoc.org/crawshaw.io/sqlite) [![Build Status](https://travis-ci.org/crawshaw/sqlite.svg?branch=master)](https://travis-ci.org/crawshaw/sqlite) (linux and macOS) [![Build status](https://ci.appveyor.com/api/projects/status/jh9xx6cut73ufkl8?svg=true)](https://ci.appveyor.com/project/crawshaw/sqlite) (windows)
 
-This package provides a low-level Go interface to SQLite 3 designed to take maximum advantage of multi-threading. Connections are [pooled](https://godoc.org/crawshaw.io/sqlite#Pool) and take advantage of the SQLite [shared cache](https://www.sqlite.org/sharedcache.html) mode and the package takes advantage of the [unlock-notify API](https://www.sqlite.org/unlock_notify.html) to minimize the amount of handling user code needs for dealing with database lock contention.
+This package provides a low-level Go interface to SQLite 3. Connections are [pooled](https://godoc.org/crawshaw.io/sqlite#Pool) and if the SQLite [shared cache](https://www.sqlite.org/sharedcache.html) mode is enabled the package takes advantage of the [unlock-notify API](https://www.sqlite.org/unlock_notify.html) to minimize the amount of handling user code needs for dealing with database lock contention.
 
 It has interfaces for some of SQLite's more interesting extensions, such as [incremental BLOB I/O](https://www.sqlite.org/c3ref/blob_open.html) and the [session extension](https://www.sqlite.org/sessionintro.html).
 
