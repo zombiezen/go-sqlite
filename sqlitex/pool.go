@@ -15,6 +15,7 @@
 package sqlitex
 
 import (
+	"context"
 	"sync"
 
 	"crawshaw.io/sqlite"
@@ -33,7 +34,7 @@ import (
 // As Get may block, a context can be used to return if a task
 // is cancelled. In this case the Conn returned will be nil:
 //
-//	conn := dbpool.Get(ctx.Done())
+//	conn := dbpool.Get(ctx)
 //	if conn == nil {
 //		return context.Canceled
 //	}
@@ -99,13 +100,17 @@ func Open(uri string, flags sqlite.OpenFlags, poolSize int) (*Pool, error) {
 // Get gets an SQLite connection from the pool.
 //
 // If no Conn is available, Get will block until one is,
-// or until either the Pool is closed or doneCh is closed,
-// in which case Get returns nil.
+// or until either the Pool is closed or the context
+// expires.
 //
-// The provided doneCh is used to control the execution
+// The provided context is used to control the execution
 // lifetime of the connection. See Conn.SetInterrupt for
 // details.
-func (p *Pool) Get(doneCh <-chan struct{}) *sqlite.Conn {
+func (p *Pool) Get(ctx context.Context) *sqlite.Conn {
+	var doneCh <-chan struct{}
+	if ctx != nil {
+		doneCh = ctx.Done()
+	}
 	select {
 	case conn, ok := <-p.free:
 		if !ok {
