@@ -12,7 +12,7 @@
 // ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 // OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-package sqlite_test
+package sqlitex_test
 
 import (
 	"fmt"
@@ -29,14 +29,14 @@ import (
 
 const poolSize = 20
 
-// newMemPool returns new sqlite.Pool attached to new database opened in memory.
+// newMemPool returns new sqlitex.Pool attached to new database opened in memory.
 //
 // the pool is initialized with size=poolSize.
 // any error is t.Fatal.
-func newMemPool(t *testing.T) *sqlite.Pool {
+func newMemPool(t *testing.T) *sqlitex.Pool {
 	t.Helper()
 	flags := sqlite.SQLITE_OPEN_READWRITE | sqlite.SQLITE_OPEN_CREATE | sqlite.SQLITE_OPEN_URI | sqlite.SQLITE_OPEN_NOMUTEX | sqlite.SQLITE_OPEN_SHAREDCACHE
-	dbpool, err := sqlite.Open("file::memory:?mode=memory", flags, poolSize)
+	dbpool, err := sqlitex.Open("file::memory:?mode=memory&cache=shared", flags, poolSize)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +91,7 @@ func TestPool(t *testing.T) {
 
 const insertCount = 120
 
-func testInsert(t *testing.T, id string, dbpool *sqlite.Pool) {
+func testInsert(t *testing.T, id string, dbpool *sqlitex.Pool) {
 	c := dbpool.Get(nil)
 	defer dbpool.Put(c)
 

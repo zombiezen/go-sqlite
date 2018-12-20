@@ -94,7 +94,7 @@ func TestBuffer(t *testing.T) {
 func TestConcurrentBuffer(t *testing.T) {
 	// Make sure the shared cache table lock does not
 	// apply to blob buffers (because we use temp tables).
-	dbpool, err := sqlite.Open("file::memory:?mode=memory", 0, 2)
+	dbpool, err := Open("file::memory:?mode=memory", 0, 2)
 	if err != nil {
 		t.Fatal(err)
 	}

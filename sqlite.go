@@ -98,6 +98,10 @@ const (
 	SQLITE_OPEN_WAL            = OpenFlags(C.SQLITE_OPEN_WAL)
 )
 
+// sqlitex_pool is used by sqlitex.Open to tell OpenConn that there is
+// one more layer in the stack calls before reaching a user function.
+const sqlitex_pool = OpenFlags(0x01000000)
+
 // OpenConn opens a single SQLite database connection.
 // A flags value of 0 defaults to:
 //
@@ -127,6 +131,12 @@ func openConn(path string, flags OpenFlags) (*Conn, error) {
 	cpath := C.CString(path)
 	defer C.free(unsafe.Pointer(cpath))
 
+	stackCallerLayers := 2 // caller of OpenConn or Open
+	if flags&sqlitex_pool != 0 {
+		stackCallerLayers = 3 // caller of sqlitex.Open
+	}
+	flags = flags &^ sqlitex_pool
+
 	res := C.sqlite3_open_v2(cpath, &conn.conn, C.int(flags), nil)
 	if res != 0 {
 		extres := C.sqlite3_extended_errcode(conn.conn)
@@ -139,7 +149,7 @@ func openConn(path string, flags OpenFlags) (*Conn, error) {
 	C.sqlite3_extended_result_codes(conn.conn, 1)
 
 	// TODO: only if Debug ?
-	_, file, line, _ := runtime.Caller(2) // caller of OpenConn or Open
+	_, file, line, _ := runtime.Caller(stackCallerLayers)
 	runtime.SetFinalizer(conn, func(conn *Conn) {
 		if !conn.closed {
 			var buf [20]byte
@@ -176,6 +186,15 @@ func (conn *Conn) Close() error {
 	C.unlock_note_free(conn.unlockNote)
 	conn.unlockNote = nil
 	return reserr("Conn.Close", "", "", res)
+}
+
+func (conn *Conn) CheckReset() string {
+	for _, stmt := range conn.stmts {
+		if stmt.lastHasRow {
+			return stmt.query
+		}
+	}
+	return ""
 }
 
 // SetInterrupt assigns a channel to control connection execution lifetime.
