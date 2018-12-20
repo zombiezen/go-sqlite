@@ -12,7 +12,7 @@
 // ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 // OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-package sqliteutil
+package sqlitex
 
 import (
 	"errors"
@@ -145,7 +145,7 @@ func (bb *Buffer) UnreadByte() error {
 		return bb.err
 	}
 	if bb.roff == 0 {
-		return errors.New("sqliteutil.Buffer: UnreadByte: no byte to unread")
+		return errors.New("sqlitex.Buffer: UnreadByte: no byte to unread")
 	}
 	bb.roff--
 	return nil
@@ -217,7 +217,7 @@ func (bb *Buffer) rbufFill() error {
 			bb.err = err
 			return err
 		} else if nn != len(bb.rbuf) {
-			panic("sqliteutil.Buffer: short read from blob")
+			panic("sqlitex.Buffer: short read from blob")
 		}
 		bb.free(tblob)
 		return nil

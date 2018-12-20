@@ -20,7 +20,7 @@ import (
 	"testing"
 
 	"crawshaw.io/sqlite"
-	"crawshaw.io/sqlite/sqliteutil"
+	"crawshaw.io/sqlite/sqlitex"
 )
 
 func initT(t *testing.T, conn *sqlite.Conn) {
@@ -225,7 +225,7 @@ func TestChangesetApply(t *testing.T) {
 		got = append(got, stmt.ColumnText(0)+","+stmt.ColumnText(1)+","+stmt.ColumnText(2))
 		return nil
 	}
-	if err := sqliteutil.Exec(conn, "SELECT c1, c2, c3 FROM t ORDER BY c1;", fn); err != nil {
+	if err := sqlitex.Exec(conn, "SELECT c1, c2, c3 FROM t ORDER BY c1;", fn); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -249,7 +249,7 @@ func TestPatchsetApply(t *testing.T) {
 		rowCountBefore = stmt.ColumnInt(0)
 		return nil
 	}
-	if err := sqliteutil.Exec(conn, "SELECT COUNT(*) FROM t;", fn); err != nil {
+	if err := sqlitex.Exec(conn, "SELECT COUNT(*) FROM t;", fn); err != nil {
 		t.Fatal(err)
 	}
 
@@ -293,7 +293,7 @@ func TestPatchsetApply(t *testing.T) {
 		rowCountAfter = stmt.ColumnInt(0)
 		return nil
 	}
-	if err := sqliteutil.Exec(conn, "SELECT COUNT(*) FROM t;", fn); err != nil {
+	if err := sqlitex.Exec(conn, "SELECT COUNT(*) FROM t;", fn); err != nil {
 		t.Fatal(err)
 	}
 

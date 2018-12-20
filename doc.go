@@ -99,7 +99,7 @@ Transactions
 
 SQLite transactions have to be managed manually with this package
 by directly calling BEGIN / COMMIT / ROLLBACK or
-SAVEPOINT / RELEASE/ ROLLBACK. The sqliteutil has a Savepoint
+SAVEPOINT / RELEASE/ ROLLBACK. The sqlitex has a Savepoint
 function that helps automate this.
 
 
@@ -139,6 +139,6 @@ Using a Pool to execute SQL in a concurrent HTTP handler.
 	}
 
 For helper functions that make some kinds of statements easier to
-write see the sqliteutil package.
+write see the sqlitex package.
 */
 package sqlite // import "crawshaw.io/sqlite"

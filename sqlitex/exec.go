@@ -12,8 +12,8 @@
 // ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 // OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-// Package sqliteutil provides utilities for working with SQLite.
-package sqliteutil // import "crawshaw.io/sqlite/sqliteutil"
+// Package sqlitex provides utilities for working with SQLite.
+package sqlitex // import "crawshaw.io/sqlite/sqlitex"
 
 import (
 	"fmt"
@@ -55,7 +55,7 @@ import (
 //	conn := dbpool.Get()
 //	defer dbpool.Put(conn)
 //
-//	if err := sqliteutil.Exec(conn, "INSERT INTO t (a, b, c, d) VALUES (?, ?, ?, ?);", nil, "a1", 1, 42, 1); err != nil {
+//	if err := sqlitex.Exec(conn, "INSERT INTO t (a, b, c, d) VALUES (?, ?, ?, ?);", nil, "a1", 1, 42, 1); err != nil {
 //		// handle err
 //	}
 //
@@ -102,7 +102,7 @@ func ExecTransient(conn *sqlite.Conn, query string, resultFn func(stmt *sqlite.S
 		}
 	}()
 	if trailingBytes != 0 {
-		return fmt.Errorf("sqliteutil.Exec: query %q has trailing bytes", query)
+		return fmt.Errorf("sqlitex.Exec: query %q has trailing bytes", query)
 	}
 	return exec(stmt, resultFn, args)
 }

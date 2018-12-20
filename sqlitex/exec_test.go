@@ -12,7 +12,7 @@
 // ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 // OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-package sqliteutil_test
+package sqlitex_test
 
 import (
 	"fmt"
@@ -20,7 +20,7 @@ import (
 	"testing"
 
 	"crawshaw.io/sqlite"
-	"crawshaw.io/sqlite/sqliteutil"
+	"crawshaw.io/sqlite/sqlitex"
 )
 
 func TestExec(t *testing.T) {
@@ -30,13 +30,13 @@ func TestExec(t *testing.T) {
 	}
 	defer conn.Close()
 
-	if err := sqliteutil.ExecTransient(conn, "CREATE TABLE t (a TEXT, b INTEGER);", nil); err != nil {
+	if err := sqlitex.ExecTransient(conn, "CREATE TABLE t (a TEXT, b INTEGER);", nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := sqliteutil.Exec(conn, "INSERT INTO t (a, b) VALUES (?, ?);", nil, "a1", 1); err != nil {
+	if err := sqlitex.Exec(conn, "INSERT INTO t (a, b) VALUES (?, ?);", nil, "a1", 1); err != nil {
 		t.Error(err)
 	}
-	if err := sqliteutil.Exec(conn, "INSERT INTO t (a, b) VALUES (?, ?);", nil, "a2", 2); err != nil {
+	if err := sqlitex.Exec(conn, "INSERT INTO t (a, b) VALUES (?, ?);", nil, "a2", 2); err != nil {
 		t.Error(err)
 	}
 
@@ -47,7 +47,7 @@ func TestExec(t *testing.T) {
 		b = append(b, stmt.ColumnInt64(1))
 		return nil
 	}
-	if err := sqliteutil.ExecTransient(conn, "SELECT a, b FROM t;", fn); err != nil {
+	if err := sqlitex.ExecTransient(conn, "SELECT a, b FROM t;", fn); err != nil {
 		t.Fatal(err)
 	}
 	if want := []string{"a1", "a2"}; !reflect.DeepEqual(a, want) {
@@ -65,7 +65,7 @@ func TestExecErr(t *testing.T) {
 	}
 	defer conn.Close()
 
-	err = sqliteutil.Exec(conn, "INVALID SQL STMT", nil)
+	err = sqlitex.Exec(conn, "INVALID SQL STMT", nil)
 	if err == nil {
 		t.Error("invalid SQL did not return an error code")
 	}
@@ -73,16 +73,16 @@ func TestExecErr(t *testing.T) {
 		t.Errorf("INVALID err code=%s, want %s", got, want)
 	}
 
-	if err := sqliteutil.Exec(conn, "CREATE TABLE t (c1, c2);", nil); err != nil {
+	if err := sqlitex.Exec(conn, "CREATE TABLE t (c1, c2);", nil); err != nil {
 		t.Error(err)
 	}
-	if err := sqliteutil.Exec(conn, "INSERT INTO t (c1, c2) VALUES (?, ?);", nil, 1, 1); err != nil {
+	if err := sqlitex.Exec(conn, "INSERT INTO t (c1, c2) VALUES (?, ?);", nil, 1, 1); err != nil {
 		t.Error(err)
 	}
-	if err := sqliteutil.Exec(conn, "INSERT INTO t (c1, c2) VALUES (?, ?);", nil, 2, 2); err != nil {
+	if err := sqlitex.Exec(conn, "INSERT INTO t (c1, c2) VALUES (?, ?);", nil, 2, 2); err != nil {
 		t.Error(err)
 	}
-	err = sqliteutil.Exec(conn, "INSERT INTO t (c1, c2) VALUES (?, ?);", nil, 1, 1, 1)
+	err = sqlitex.Exec(conn, "INSERT INTO t (c1, c2) VALUES (?, ?);", nil, 1, 1, 1)
 	if got, want := sqlite.ErrCode(err), sqlite.SQLITE_RANGE; got != want {
 		t.Errorf("INSERT err code=%s, want %s", got, want)
 	}
@@ -93,7 +93,7 @@ func TestExecErr(t *testing.T) {
 		calls++
 		return customErr
 	}
-	err = sqliteutil.Exec(conn, "SELECT c1 FROM t;", fn)
+	err = sqlitex.Exec(conn, "SELECT c1 FROM t;", fn)
 	if err != customErr {
 		t.Errorf("SELECT want err=customErr, got: %v", err)
 	}
@@ -115,7 +115,7 @@ INSERT INTO t (a, b) VALUES ("a1", 1);
 INSERT INTO t (a, b) VALUES ("a2", 2);
 `
 
-	if err := sqliteutil.ExecScript(conn, script); err != nil {
+	if err := sqlitex.ExecScript(conn, script); err != nil {
 		t.Error(err)
 	}
 
@@ -124,7 +124,7 @@ INSERT INTO t (a, b) VALUES ("a2", 2);
 		sum = stmt.ColumnInt(0)
 		return nil
 	}
-	if err := sqliteutil.Exec(conn, "SELECT sum(b) FROM t;", fn); err != nil {
+	if err := sqlitex.Exec(conn, "SELECT sum(b) FROM t;", fn); err != nil {
 		t.Fatal(err)
 	}
 

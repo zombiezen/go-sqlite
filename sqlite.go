@@ -318,7 +318,7 @@ func (conn *Conn) Prepare(query string) (*Stmt, error) {
 // The number of trailing bytes not consumed from query is returned.
 //
 // To run a sequence of queries once as part of a script,
-// the sqliteutil package provides an ExecScript function built on this.
+// the sqlitex package provides an ExecScript function built on this.
 //
 // https://www.sqlite.org/c3ref/prepare.html
 func (conn *Conn) PrepareTransient(query string) (stmt *Stmt, trailingBytes int, err error) {

@@ -24,7 +24,7 @@ import (
 	"time"
 
 	"crawshaw.io/sqlite"
-	"crawshaw.io/sqlite/sqliteutil"
+	"crawshaw.io/sqlite/sqlitex"
 )
 
 const poolSize = 20
@@ -152,7 +152,7 @@ func TestSharedCacheLock(t *testing.T) {
 		}
 	}()
 
-	err = sqliteutil.ExecScript(c0, `
+	err = sqlitex.ExecScript(c0, `
 		DROP TABLE IF EXISTS t;
 		CREATE TABLE t (c, content BLOB);
 		DROP TABLE IF EXISTS t2;
@@ -182,7 +182,7 @@ func TestSharedCacheLock(t *testing.T) {
 		}
 	}
 	c0Unlock := func() {
-		if err := sqliteutil.Exec(c0, "COMMIT;", nil); err != nil {
+		if err := sqlitex.Exec(c0, "COMMIT;", nil); err != nil {
 			t.Fatal(err)
 		}
 	}

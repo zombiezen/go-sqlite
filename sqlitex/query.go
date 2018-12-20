@@ -1,4 +1,4 @@
-package sqliteutil
+package sqlitex
 
 import (
 	"errors"

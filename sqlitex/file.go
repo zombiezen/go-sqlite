@@ -12,7 +12,7 @@
 // ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 // OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-package sqliteutil
+package sqlitex
 
 import (
 	"fmt"
@@ -232,7 +232,7 @@ func (bb *File) Seek(offset int64, whence int) (int64, error) {
 		offset += bb.Len()
 	}
 	if offset < 0 {
-		return -1, fmt.Errorf("sqliteutil.File: attempting to seek before beginning of blob (%d)", offset)
+		return -1, fmt.Errorf("sqlitex.File: attempting to seek before beginning of blob (%d)", offset)
 	}
 
 	rem := offset

@@ -12,7 +12,7 @@
 // ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 // OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-package sqliteutil
+package sqlitex
 
 import (
 	"io/ioutil"
@@ -33,7 +33,7 @@ func TestFileRand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f2, err := ioutil.TempFile("", "sqliteutil")
+	f2, err := ioutil.TempFile("", "sqlitex")
 	if err != nil {
 		t.Fatal(err)
 	}

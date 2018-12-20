@@ -12,7 +12,7 @@
 // ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 // OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-package sqliteutil
+package sqlitex
 
 import (
 	"context"
@@ -273,7 +273,7 @@ func TestInterruptRollback(t *testing.T) {
 }
 
 func TestBusySnapshot(t *testing.T) {
-	dir, err := ioutil.TempDir("", "sqliteutil-test-")
+	dir, err := ioutil.TempDir("", "sqlitex-test-")
 	if err != nil {
 		t.Fatal(err)
 	}

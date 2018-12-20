@@ -25,7 +25,7 @@ import (
 	"time"
 
 	"crawshaw.io/sqlite"
-	"crawshaw.io/sqlite/sqliteutil"
+	"crawshaw.io/sqlite/sqlitex"
 )
 
 func TestConn(t *testing.T) {
@@ -182,7 +182,7 @@ func TestInterruptStepReset(t *testing.T) {
 		}
 	}()
 
-	err = sqliteutil.ExecScript(c, `CREATE TABLE resetint (c);
+	err = sqlitex.ExecScript(c, `CREATE TABLE resetint (c);
 INSERT INTO resetint (c) VALUES (1);
 INSERT INTO resetint (c) VALUES (2);
 INSERT INTO resetint (c) VALUES (3);`)
@@ -221,7 +221,7 @@ func TestInterruptReset(t *testing.T) {
 		}
 	}()
 
-	err = sqliteutil.ExecScript(c, `CREATE TABLE resetint (c);
+	err = sqlitex.ExecScript(c, `CREATE TABLE resetint (c);
 INSERT INTO resetint (c) VALUES (1);
 INSERT INTO resetint (c) VALUES (2);
 INSERT INTO resetint (c) VALUES (3);`)
@@ -567,7 +567,7 @@ func TestBusyTimeout(t *testing.T) {
 		}
 	}()
 
-	err = sqliteutil.ExecScript(conn0, `
+	err = sqlitex.ExecScript(conn0, `
 		CREATE TABLE t (c);
 		INSERT INTO t (c) VALUES (1);
 	`)

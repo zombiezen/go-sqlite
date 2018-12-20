@@ -12,7 +12,7 @@
 // ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 // OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-package sqliteutil
+package sqlitex
 
 import (
 	"fmt"
@@ -31,14 +31,14 @@ import (
 // Example:
 //
 //	func doWork(conn *sqlite.Conn) (err error) {
-//		defer sqliteutil.Save(conn)(&err)
+//		defer sqlitex.Save(conn)(&err)
 //
 //		// ... do work in the transaction
 //	}
 //
 // https://www.sqlite.org/lang_savepoint.html
 func Save(conn *sqlite.Conn) (releaseFn func(*error)) {
-	name := "sqliteutil.Save" // safe as names can be reused
+	name := "sqlitex.Save" // safe as names can be reused
 	var pc [3]uintptr
 	if n := runtime.Callers(0, pc[:]); n > 0 {
 		frames := runtime.CallersFrames(pc[:n])
@@ -68,7 +68,7 @@ func Save(conn *sqlite.Conn) (releaseFn func(*error)) {
 
 func savepoint(conn *sqlite.Conn, name string) (releaseFn func(*error), err error) {
 	if strings.Contains(name, `"`) {
-		return nil, fmt.Errorf("sqliteutil.Savepoint: invalid name: %q", name)
+		return nil, fmt.Errorf("sqlitex.Savepoint: invalid name: %q", name)
 	}
 	if err := Exec(conn, fmt.Sprintf("SAVEPOINT %q;", name), nil); err != nil {
 		return nil, err
