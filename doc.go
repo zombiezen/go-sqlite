@@ -111,7 +111,7 @@ Using a Pool to execute SQL in a concurrent HTTP handler.
 
 	func main() {
 		var err error
-		dbpool, err = sqlite.Open("file:memory:?mode=memory", 0, 10)
+		dbpool, err = sqlitex.Open("file:memory:?mode=memory", 0, 10)
 		if err != nil {
 			log.Fatal(err)
 		}

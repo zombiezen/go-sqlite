@@ -21,7 +21,7 @@ var dbpool *sqlite.Pool
 
 func main() {
 	var err error
-	dbpool, err = sqlite.Open("file:memory:?mode=memory", 0, 10)
+	dbpool, err = sqlitex.Open("file:memory:?mode=memory", 0, 10)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -30,7 +30,7 @@ func main() {
 }
 
 func handler(w http.ResponseWriter, r *http.Request) {
-	conn := dbpool.Get(r.Context().Done())
+	conn := dbpool.Get(r.Context())
 	if conn == nil {
 		return
 	}
