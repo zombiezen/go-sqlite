@@ -67,6 +67,7 @@ type Conn struct {
 	count  int // shared variable to help the race detector find Conn misuse
 
 	cancelCh   chan struct{}
+	tracer     Tracer
 	doneCh     <-chan struct{}
 	unlockNote *C.unlock_note
 	file       string
@@ -188,6 +189,8 @@ func (conn *Conn) Close() error {
 	return reserr("Conn.Close", "", "", res)
 }
 
+// CheckResult reports whether any statement on this connection
+// is in the process of returning results.
 func (conn *Conn) CheckReset() string {
 	for _, stmt := range conn.stmts {
 		if stmt.lastHasRow {
@@ -195,6 +198,20 @@ func (conn *Conn) CheckReset() string {
 		}
 	}
 	return ""
+}
+
+type Tracer interface {
+	NewTask(name string) TracerTask
+}
+
+type TracerTask interface {
+	StartRegion(regionType string)
+	EndRegion()
+	End()
+}
+
+func (conn *Conn) SetTracer(tracer Tracer) {
+	conn.tracer = tracer
 }
 
 // SetInterrupt assigns a channel to control connection execution lifetime.
@@ -317,6 +334,11 @@ func (conn *Conn) Prepare(query string) (*Stmt, error) {
 		if err := stmt.ClearBindings(); err != nil {
 			return nil, err
 		}
+		if conn.tracer != nil {
+			// TODO: is query too long for a task name?
+			//       should we use trace.Log instead?
+			stmt.tracerTask = conn.tracer.NewTask(query)
+		}
 		return stmt, nil
 	}
 	stmt, trailingBytes, err := conn.prepare(query, C.SQLITE_PREPARE_PERSISTENT)
@@ -328,6 +350,9 @@ func (conn *Conn) Prepare(query string) (*Stmt, error) {
 		return nil, reserr("Conn.Prepare", query, "statement has trailing bytes", C.SQLITE_ERROR)
 	}
 	conn.stmts[query] = stmt
+	if conn.tracer != nil {
+		stmt.tracerTask = conn.tracer.NewTask(query)
+	}
 	return stmt, nil
 }
 
@@ -460,6 +485,7 @@ type Stmt struct {
 	bindErr      error
 	prepInterupt bool // set if Prep was interrupted
 	lastHasRow   bool // last bool returned by Step
+	tracerTask   TracerTask
 }
 
 func (stmt *Stmt) interrupted(loc string) error {
@@ -565,13 +591,26 @@ func (stmt *Stmt) Step() (rowReturned bool, err error) {
 		stmt.Reset()
 		return false, err
 	}
-	defer func() {
-		if err != nil {
-			C.sqlite3_reset(stmt.stmt)
-		}
-		stmt.lastHasRow = rowReturned
-	}()
 
+	if stmt.tracerTask != nil {
+		stmt.tracerTask.StartRegion("Step")
+	}
+	rowReturned, err = stmt.step()
+	if stmt.tracerTask != nil {
+		stmt.tracerTask.EndRegion()
+		if !rowReturned {
+			stmt.tracerTask.End()
+			stmt.tracerTask = nil
+		}
+	}
+	if err != nil {
+		C.sqlite3_reset(stmt.stmt)
+	}
+	stmt.lastHasRow = rowReturned
+	return rowReturned, err
+}
+
+func (stmt *Stmt) step() (bool, error) {
 	for {
 		stmt.conn.count++
 		if err := stmt.interrupted("Stmt.Step"); err != nil {
@@ -988,4 +1027,6 @@ func log_fn(_ unsafe.Pointer, code C.int, msg *C.char) {
 // Logger is written to by SQLite.
 // The Logger must be set before any connection is opened.
 // The msg slice is only valid for the duration of the call.
+//
+// It is very noisy.
 var Logger func(code ErrorCode, msg []byte)

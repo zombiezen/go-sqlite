@@ -16,6 +16,7 @@ package sqlitex
 
 import (
 	"context"
+	"runtime/trace"
 	"sync"
 
 	"crawshaw.io/sqlite"
@@ -107,15 +108,18 @@ func Open(uri string, flags sqlite.OpenFlags, poolSize int) (*Pool, error) {
 // lifetime of the connection. See Conn.SetInterrupt for
 // details.
 func (p *Pool) Get(ctx context.Context) *sqlite.Conn {
+	var tr sqlite.Tracer
 	var doneCh <-chan struct{}
 	if ctx != nil {
 		doneCh = ctx.Done()
+		tr = &tracer{ctx: ctx}
 	}
 	select {
 	case conn, ok := <-p.free:
 		if !ok {
 			return nil // pool is closed
 		}
+		conn.SetTracer(tr)
 		conn.SetInterrupt(doneCh)
 		return conn
 	case <-doneCh:
@@ -146,6 +150,7 @@ func (p *Pool) Put(conn *sqlite.Conn) {
 		panic("sqlite.Pool.Put: connection not created by this pool")
 	}
 
+	conn.SetTracer(nil)
 	conn.SetInterrupt(nil)
 	select {
 	case p.free <- conn:
@@ -177,3 +182,37 @@ type strerror struct {
 }
 
 func (err strerror) Error() string { return err.msg }
+
+type tracer struct {
+	ctx context.Context
+}
+
+func (t *tracer) NewTask(name string) sqlite.TracerTask {
+	ctx, task := trace.NewTask(t.ctx, name)
+	return &tracerTask{
+		ctx: ctx,
+		task: task,
+	}
+}
+
+type tracerTask struct {
+	ctx    context.Context
+	task   *trace.Task
+	region *trace.Region
+}
+
+func (t *tracerTask) StartRegion(regionType string) {
+	if t.region != nil {
+		panic("sqlitex.tracerTask.StartRegion: already in region")
+	}
+	t.region = trace.StartRegion(t.ctx, regionType)
+}
+
+func (t *tracerTask) EndRegion() {
+	t.region.End()
+	t.region = nil
+}
+
+func (t *tracerTask) End() {
+	t.task.End()
+}
