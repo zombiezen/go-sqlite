@@ -184,13 +184,34 @@ type strerror struct {
 func (err strerror) Error() string { return err.msg }
 
 type tracer struct {
-	ctx context.Context
+	ctx       context.Context
+	ctxStack  []context.Context
+	taskStack []*trace.Task
+}
+
+func (t *tracer) pctx() context.Context {
+	if len(t.ctxStack) != 0 {
+		return t.ctxStack[len(t.ctxStack)-1]
+	}
+	return t.ctx
+}
+
+func (t *tracer) Push(name string) {
+	ctx, task := trace.NewTask(t.pctx(), name)
+	t.ctxStack = append(t.ctxStack, ctx)
+	t.taskStack = append(t.taskStack, task)
+}
+
+func (t *tracer) Pop() {
+	t.taskStack[len(t.taskStack)-1].End()
+	t.taskStack = t.taskStack[:len(t.taskStack)-1]
+	t.ctxStack = t.ctxStack[:len(t.ctxStack)-1]
 }
 
 func (t *tracer) NewTask(name string) sqlite.TracerTask {
-	ctx, task := trace.NewTask(t.ctx, name)
+	ctx, task := trace.NewTask(t.pctx(), name)
 	return &tracerTask{
-		ctx: ctx,
+		ctx:  ctx,
 		task: task,
 	}
 }

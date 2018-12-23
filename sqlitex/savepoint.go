@@ -73,7 +73,14 @@ func savepoint(conn *sqlite.Conn, name string) (releaseFn func(*error), err erro
 	if err := Exec(conn, fmt.Sprintf("SAVEPOINT %q;", name), nil); err != nil {
 		return nil, err
 	}
+	tracer := conn.Tracer()
+	if tracer != nil {
+		tracer.Push("TX " + name)
+	}
 	releaseFn = func(errp *error) {
+		if tracer != nil {
+			tracer.Pop()
+		}
 		recoverP := recover()
 
 		if *errp == nil && recoverP == nil {

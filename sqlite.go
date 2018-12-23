@@ -202,12 +202,18 @@ func (conn *Conn) CheckReset() string {
 
 type Tracer interface {
 	NewTask(name string) TracerTask
+	Push(name string)
+	Pop()
 }
 
 type TracerTask interface {
 	StartRegion(regionType string)
 	EndRegion()
 	End()
+}
+
+func (conn *Conn) Tracer() Tracer {
+	return conn.tracer
 }
 
 func (conn *Conn) SetTracer(tracer Tracer) {
