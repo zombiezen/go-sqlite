@@ -178,12 +178,15 @@ func openConn(path string, flags OpenFlags) (*Conn, error) {
 	return conn, nil
 }
 
-// Close closes the database connection using sqlite3_close_v2.
-// https://www.sqlite.org/c3ref/close.html
+// Close closes the database connection using sqlite3_close and finalizes
+// persistent prepared statements. https://www.sqlite.org/c3ref/close.html
 func (conn *Conn) Close() error {
 	conn.cancelInterrupt()
 	conn.closed = true
-	res := C.sqlite3_close_v2(conn.conn)
+	for _, stmt := range conn.stmts {
+		stmt.Finalize()
+	}
+	res := C.sqlite3_close(conn.conn)
 	C.unlock_note_free(conn.unlockNote)
 	conn.unlockNote = nil
 	return reserr("Conn.Close", "", "", res)
@@ -364,6 +367,7 @@ func (conn *Conn) Prepare(query string) (*Stmt, error) {
 
 // PrepareTransient prepares an SQL statement that is not cached by
 // the Conn. Subsequent calls with the same query will create new Stmts.
+// Finalize must be called by the caller once done with the Stmt.
 //
 // The number of trailing bytes not consumed from query is returned.
 //
@@ -375,7 +379,7 @@ func (conn *Conn) PrepareTransient(query string) (stmt *Stmt, trailingBytes int,
 	stmt, trailingBytes, err = conn.prepare(query, 0)
 	if stmt != nil {
 		runtime.SetFinalizer(stmt, func(stmt *Stmt) {
-			if stmt.conn != nil && !stmt.conn.closed {
+			if stmt.conn != nil {
 				panic("open *sqlite.Stmt \"" + query + "\" garbage collected, call Finalize")
 			}
 		})
