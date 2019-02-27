@@ -115,7 +115,7 @@ Using a Pool to execute SQL in a concurrent HTTP handler.
 		if err != nil {
 			log.Fatal(err)
 		}
-		http.Handle("/", handler)
+		http.HandleFunc("/", handle)
 		log.Fatal(http.ListenAndServe(":8080", nil))
 	}
 
