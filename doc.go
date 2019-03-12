@@ -22,7 +22,7 @@ http://www.sqlite.org/c3ref/intro.html.
 An SQLite connection is represented by a *sqlite.Conn.
 Connections cannot be used concurrently.
 A typical Go program will create a pool of connections
-(using Open to create a *sqlite.Pool) so goroutines can
+(using Open to create a *sqlitex.Pool) so goroutines can
 borrow a connection while they need to talk to the database.
 
 This package assumes SQLite will be used concurrently by the
@@ -107,7 +107,7 @@ A typical HTTP Handler
 
 Using a Pool to execute SQL in a concurrent HTTP handler.
 
-	var dbpool *sqlite.Pool
+	var dbpool *sqlitex.Pool
 
 	func main() {
 		var err error
