@@ -32,6 +32,8 @@ package sqlite
 // #cgo linux CFLAGS: -std=c99
 // #cgo openbsd LDFLAGS: -lm
 // #cgo openbsd CFLAGS: -std=c99
+// #cgo freebsd LDFLAGS: -lm
+// #cgo freebsd CFLAGS: -std=c99
 //
 // #include <blocking_step.h>
 // #include <sqlite3.h>
