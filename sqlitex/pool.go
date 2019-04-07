@@ -80,7 +80,7 @@ func Open(uri string, flags sqlite.OpenFlags, poolSize int) (*Pool, error) {
 
 	// sqlitex_pool is also defined in package sqlite
 	const sqlitex_pool = sqlite.OpenFlags(0x01000000)
-	flags &= sqlitex_pool
+	flags |= sqlitex_pool
 
 	p.allMu.Lock()
 	defer p.allMu.Unlock()
