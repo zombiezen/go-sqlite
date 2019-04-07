@@ -63,7 +63,7 @@ type Pool struct {
 //	SQLITE_OPEN_WAL
 //	SQLITE_OPEN_URI
 //	SQLITE_OPEN_NOMUTEX
-func Open(uri string, flags sqlite.OpenFlags, poolSize int) (*Pool, error) {
+func Open(uri string, flags sqlite.OpenFlags, poolSize int) (pool *Pool, err error) {
 	if uri == ":memory:" {
 		return nil, strerror{msg: `sqlite: ":memory:" does not work with multiple connections, use "file::memory:?mode=memory"`}
 	}
@@ -73,6 +73,12 @@ func Open(uri string, flags sqlite.OpenFlags, poolSize int) (*Pool, error) {
 		free:       make(chan *sqlite.Conn, poolSize),
 		closed:     make(chan struct{}),
 	}
+	defer func() {
+		// If an error occurred, call Close outside the lock so this doesn't deadlock.
+		if err != nil {
+			p.Close()
+		}
+	}()
 
 	if flags == 0 {
 		flags = sqlite.SQLITE_OPEN_READWRITE | sqlite.SQLITE_OPEN_CREATE | sqlite.SQLITE_OPEN_WAL | sqlite.SQLITE_OPEN_URI | sqlite.SQLITE_OPEN_NOMUTEX
@@ -88,7 +94,6 @@ func Open(uri string, flags sqlite.OpenFlags, poolSize int) (*Pool, error) {
 	for i := 0; i < poolSize; i++ {
 		conn, err := sqlite.OpenConn(uri, flags)
 		if err != nil {
-			p.Close()
 			return nil, err
 		}
 		p.free <- conn
