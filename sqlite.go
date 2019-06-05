@@ -29,6 +29,7 @@ package sqlite
 // #cgo CFLAGS: -DSQLITE_ENABLE_COLUMN_METADATA
 // #cgo CFLAGS: -DHAVE_USLEEP=1
 // #cgo CFLAGS: -DSQLITE_DQS=0
+// #cgo CFLAGS: -DSQLITE_ENABLE_GEOPOLY
 // #cgo windows LDFLAGS: -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic
 // #cgo linux LDFLAGS: -ldl -lm
 // #cgo linux CFLAGS: -std=c99
