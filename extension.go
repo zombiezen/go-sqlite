@@ -19,7 +19,7 @@ import "unsafe"
 // #include <stdlib.h>
 // #include <sqlite3.h>
 // static int db_config_onoff(sqlite3* db, int op, int onoff) {
-//   return sqlite3_db_config(db, op, onoff);
+//   return sqlite3_db_config(db, op, onoff, NULL);
 // }
 import "C"
 
