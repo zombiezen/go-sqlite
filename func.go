@@ -76,12 +76,14 @@ func (v Value) Float() float64   { return float64(C.sqlite3_value_double(v.ptr))
 func (v Value) Len() int         { return int(C.sqlite3_value_bytes(v.ptr)) }
 func (v Value) Type() ColumnType { return ColumnType(C.sqlite3_value_type(v.ptr)) }
 func (v Value) Text() string {
+	ptr := unsafe.Pointer(C.sqlite3_value_text(v.ptr))
 	n := v.Len()
-	return C.GoStringN((*C.char)(unsafe.Pointer(C.sqlite3_value_text(v.ptr))), C.int(n))
+	return C.GoStringN((*C.char)(ptr), C.int(n))
 }
 func (v Value) Blob() []byte {
+	ptr := unsafe.Pointer(C.sqlite3_value_blob(v.ptr))
 	n := v.Len()
-	return C.GoBytes(unsafe.Pointer(C.sqlite3_value_blob(v.ptr)), C.int(n))
+	return C.GoBytes(ptr, C.int(n))
 }
 
 type xfunc struct {
