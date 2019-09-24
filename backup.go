@@ -69,19 +69,19 @@ func (src *Conn) BackupInit(srcDB, dstDB string, dst *Conn) (*Backup, error) {
 	var srcCDB, dstCDB *C.char
 	defer setCDB(dstDB, &dstCDB)()
 	defer setCDB(srcDB, &srcCDB)()
-	b := &Backup{}
+	var b Backup
 	b.ptr = C.sqlite3_backup_init(dst.conn, dstCDB, src.conn, srcCDB)
 	if b.ptr == nil {
 		res := C.sqlite3_errcode(dst.conn)
 		return nil, dst.extreserr("Conn.BackupInit", "", res)
 	}
-	runtime.SetFinalizer(b, func(b *Backup) {
+	runtime.SetFinalizer(&b, func(b *Backup) {
 		if b.ptr != nil {
 			panic("open *sqlite.Backup garbage collected, call Finish method")
 		}
 	})
 
-	return b, nil
+	return &b, nil
 }
 func setCDB(db string, cdb **C.char) func() {
 	if db == "" || db == "main" {
