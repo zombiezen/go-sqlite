@@ -157,7 +157,7 @@ func TestSharedCacheLock(t *testing.T) {
 		CREATE TABLE t (c, content BLOB);
 		DROP TABLE IF EXISTS t2;
 		CREATE TABLE t2 (c);
-		INSERT INTO t2 (c) VALUES ("hello");
+		INSERT INTO t2 (c) VALUES ('hello');
 		`)
 	if err != nil {
 		t.Fatal(err)

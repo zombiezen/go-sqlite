@@ -50,7 +50,7 @@ func TestExec(t *testing.T) {
 	insert := func(succeed bool) (err error) {
 		defer Save(conn)(&err)
 
-		if err := Exec(conn, `INSERT INTO t VALUES ("hello");`, nil); err != nil {
+		if err := Exec(conn, `INSERT INTO t VALUES ('hello');`, nil); err != nil {
 			t.Fatal(err)
 		}
 
@@ -90,7 +90,7 @@ func TestPanic(t *testing.T) {
 	if err := Exec(conn, "CREATE TABLE t (c1);", nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := Exec(conn, `INSERT INTO t VALUES ("one");`, nil); err != nil {
+	if err := Exec(conn, `INSERT INTO t VALUES ('one');`, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -124,7 +124,7 @@ func TestPanic(t *testing.T) {
 func doPanic(conn *sqlite.Conn) (err error) {
 	defer Save(conn)(&err)
 
-	if err := Exec(conn, `INSERT INTO t VALUES ("hello");`, nil); err != nil {
+	if err := Exec(conn, `INSERT INTO t VALUES ('hello');`, nil); err != nil {
 		return err
 	}
 
@@ -183,7 +183,7 @@ func TestReleaseTx(t *testing.T) {
 	insert := func(succeed bool) (err error) {
 		defer Save(conn1)(&err)
 
-		if err := Exec(conn1, `INSERT INTO t VALUES ("hello");`, nil); err != nil {
+		if err := Exec(conn1, `INSERT INTO t VALUES ('hello');`, nil); err != nil {
 			t.Fatal(err)
 		}
 
@@ -296,7 +296,7 @@ func TestBusySnapshot(t *testing.T) {
 	if err = ExecScript(conn0, `
 		DROP TABLE IF EXISTS t;
 		CREATE TABLE t (c, b BLOB);
-		INSERT INTO t (c, b) VALUES (4, "hi");
+		INSERT INTO t (c, b) VALUES (4, 'hi');
 	`); err != nil {
 		t.Fatal(err)
 	}

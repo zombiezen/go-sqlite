@@ -111,8 +111,8 @@ func TestExecScript(t *testing.T) {
 
 	script := `
 CREATE TABLE t (a TEXT, b INTEGER);
-INSERT INTO t (a, b) VALUES ("a1", 1);
-INSERT INTO t (a, b) VALUES ("a2", 2);
+INSERT INTO t (a, b) VALUES ('a1', 1);
+INSERT INTO t (a, b) VALUES ('a2', 2);
 `
 
 	if err := sqlitex.ExecScript(conn, script); err != nil {

@@ -115,7 +115,6 @@ func exec(stmt *sqlite.Stmt, resultFn func(stmt *sqlite.Stmt) error, args []inte
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 			stmt.BindInt64(i, v.Int())
 		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-
 			stmt.BindInt64(i, int64(v.Uint()))
 		case reflect.Float32, reflect.Float64:
 			stmt.BindFloat(i, v.Float())

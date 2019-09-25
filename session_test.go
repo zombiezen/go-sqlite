@@ -24,10 +24,10 @@ import (
 )
 
 func initT(t *testing.T, conn *sqlite.Conn) {
-	if _, err := conn.Prep(`INSERT INTO t (c1, c2, c3) VALUES ("1", "2", "3");`).Step(); err != nil {
+	if _, err := conn.Prep(`INSERT INTO t (c1, c2, c3) VALUES ('1', '2', '3');`).Step(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := conn.Prep(`INSERT INTO t (c1, c2, c3) VALUES ("4", "5", "6");`).Step(); err != nil {
+	if _, err := conn.Prep(`INSERT INTO t (c1, c2, c3) VALUES ('4', '5', '6');`).Step(); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -52,11 +52,11 @@ func fillSession(t *testing.T) (*sqlite.Conn, *sqlite.Session) {
 	}
 
 	stmts := []string{
-		`UPDATE t SET c1="one" WHERE c1="1";`,
-		`UPDATE t SET c2="two", c3="three" WHERE c1="one";`,
-		`UPDATE t SET c1="noop" WHERE c2="2";`,
-		`DELETE FROM t WHERE c1="4";`,
-		`INSERT INTO t (c1, c2, c3) VALUES ("four", "five", "six");`,
+		`UPDATE t SET c1='one' WHERE c1='1';`,
+		`UPDATE t SET c2='two', c3='three' WHERE c1='one';`,
+		`UPDATE t SET c1='noop' WHERE c2='2';`,
+		`DELETE FROM t WHERE c1='4';`,
+		`INSERT INTO t (c1, c2, c3) VALUES ('four', 'five', 'six');`,
 	}
 
 	for _, stmt := range stmts {

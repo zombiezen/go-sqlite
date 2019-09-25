@@ -28,6 +28,7 @@ package sqlite
 // #cgo CFLAGS: -DSQLITE_USE_ALLOCA
 // #cgo CFLAGS: -DSQLITE_ENABLE_COLUMN_METADATA
 // #cgo CFLAGS: -DHAVE_USLEEP=1
+// #cgo CFLAGS: -DSQLITE_DQS=0
 // #cgo windows LDFLAGS: -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic
 // #cgo linux LDFLAGS: -ldl -lm
 // #cgo linux CFLAGS: -std=c99
@@ -50,6 +51,10 @@ package sqlite
 // extern void log_fn(void* pArg, int code, char* msg);
 // static void enable_logging() {
 //	sqlite3_config(SQLITE_CONFIG_LOG, log_fn, NULL);
+// }
+//
+// static int db_config_onoff(sqlite3* db, int op, int onoff) {
+//   return sqlite3_db_config(db, op, onoff, NULL);
 // }
 import "C"
 import (
@@ -195,8 +200,40 @@ func (conn *Conn) Close() error {
 	return reserr("Conn.Close", "", "", res)
 }
 
-// CheckResult reports whether any statement on this connection
-// is in the process of returning results.
+const (
+	SQLITE_DBCONFIG_DQS_DML = C.int(C.SQLITE_DBCONFIG_DQS_DML)
+	SQLITE_DBCONFIG_DQS_DDL = C.int(C.SQLITE_DBCONFIG_DQS_DDL)
+)
+
+// EnableDoubleQuotedStringLiterals allows fine grained control over whether
+// double quoted string literals are accepted in Data Manipulation Language or
+// Data Definition Language queries.
+//
+// By default DQS is disabled since double quotes should indicate an identifier.
+//
+// https://sqlite.org/quirks.html#dblquote
+func (conn *Conn) EnableDoubleQuotedStringLiterals(dml, ddl bool) error {
+	var enable C.int
+	if dml {
+		enable = 1
+	}
+	res := C.db_config_onoff(conn.conn, SQLITE_DBCONFIG_DQS_DML, enable)
+	if res != 0 {
+		return reserr("Conn.EnableDoubleQuotedStringLiterals", "", "", res)
+	}
+	enable = 0
+	if ddl {
+		enable = 1
+	}
+	res = C.db_config_onoff(conn.conn, SQLITE_DBCONFIG_DQS_DDL, enable)
+	if res != 0 {
+		return reserr("Conn.EnableDoubleQuotedStringLiterals", "", "", res)
+	}
+	return nil
+}
+
+// CheckReset reports whether any statement on this connection is in the process
+// of returning results.
 func (conn *Conn) CheckReset() string {
 	for _, stmt := range conn.stmts {
 		if stmt.lastHasRow {
