@@ -98,9 +98,19 @@ func savepoint(conn *sqlite.Conn, name string) (releaseFn func(*error), err erro
 		}
 
 		// Error path.
+
+		// If a query was interrupted, then everything was already
+		// rolled back automatically, thus returning the connection to
+		// autocommit mode.
+		if conn.GetAutocommit() {
+			// There is nothing to rollback.
+			return
+		}
+
 		// Always run ROLLBACK even if the connection has been interrupted.
 		oldDoneCh := conn.SetInterrupt(nil)
 		defer conn.SetInterrupt(oldDoneCh)
+
 		err := Exec(conn, fmt.Sprintf("ROLLBACK TO %q;", name), nil)
 		if err != nil {
 			panic(orig + err.Error())
