@@ -89,7 +89,7 @@ func (s *Session) Disable() { C.sqlite3session_enable(s.ptr, 0) }
 func (s *Session) Attach(tableName string) error {
 	var ctable *C.char
 	if tableName != "" {
-		ctable := C.CString(tableName)
+		ctable = C.CString(tableName)
 		defer C.free(unsafe.Pointer(ctable))
 	}
 	res := C.sqlite3session_attach(s.ptr, ctable)
