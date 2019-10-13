@@ -82,7 +82,7 @@ func (conn *Conn) CreateSnapshot(schema string) (*Snapshot, func(), error) {
 
 	endRead, err := conn.disableAutoCommitMode()
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 
 	res := C.sqlite3_snapshot_get(conn.conn, s.schema, &s.ptr)
@@ -110,7 +110,7 @@ func (conn *Conn) CreateSnapshot(schema string) (*Snapshot, func(), error) {
 func (s *Snapshot) Free() {
 	C.sqlite3_snapshot_free(s.ptr)
 	if s.schema != cmain {
-		C.free(s.schema)
+		C.free(unsafe.Pointer(s.schema))
 	}
 	runtime.SetFinalizer(s, nil)
 }
@@ -168,7 +168,7 @@ func (conn *Conn) StartSnapshotRead(s *Snapshot) (endRead func(), err error) {
 func (conn *Conn) disableAutoCommitMode() (func(), error) {
 	begin := conn.Prep("BEGIN;")
 	if _, err := begin.Step(); err != nil {
-		return err
+		return nil, err
 	}
 	return func() {
 		commit := conn.Prep("COMMIT;")

@@ -49,17 +49,18 @@ func TestSnapshot(t *testing.T) {
 	conn, cleanup := initDB(t)
 	defer cleanup()
 
-	s1, err := conn.CreateSnapshot("")
+	s1, endRead, err := conn.CreateSnapshot("")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s1.Free()
+	endRead()
 
 	if err := sqlitex.ExecScript(conn, `UPDATE t SET c2 = 100;`); err != nil {
 		t.Fatal(err)
 	}
 
-	endRead, err := conn.StartSnapshotRead(s1)
+	endRead, err = conn.StartSnapshotRead(s1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,11 +77,12 @@ func TestSnapshot(t *testing.T) {
 		t.Fatalf("expected row1 c2 to be 100 but found %v", c2)
 	}
 
-	s2, err := conn.CreateSnapshot("")
+	s2, endRead, err := conn.CreateSnapshot("")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s2.Free()
+	defer endRead()
 
 	if cmp := s1.CompareAges(s2); cmp >= 0 {
 		t.Fatalf("expected s1 to be older than s2 but CompareAges returned %v", cmp)
