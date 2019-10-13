@@ -33,8 +33,31 @@ type Snapshot struct {
 	schema *C.char
 }
 
-// CreateSnapshot attempts to make a new Snapshot that records the current state
-// of schema in conn.
+// CreateSnapshot attempts to make a new Snapshot that records the current
+// state of the given schema in conn. If successful, a *Snapshot and a func()
+// is returned, and the conn will have an open READ transaction which will
+// continue to reflect the state of the Snapshot until the returned func() is
+// called. No WRITE transaction may occur on conn until the returned func() is
+// called.
+//
+// The returned *Snapshot is threadsafe for creating additional read
+// transactions that reflect its state with Conn.StartSnapshotRead.
+//
+// So long as at least one read transaction is open on the Snapshot, then the
+// WAL file will not be checkpointed past that point, and the Snapshot will
+// continue to be available for creating additional read transactions. However,
+// if no read transaction is open on the Snapshot, then it is possible for the
+// WAL to be checkpointed past the point of the Snapshot. If this occurs then
+// there is no way to start a read on the Snapshot. In order to ensure that a
+// Snapshot remains readable, always maintain at least one open read
+// transaction on the Snapshot.
+//
+// The returned *Snapshot has a finalizer that calls Free if it has not been
+// called, so it is safe to allow a Snapshot to be garbage collected. However,
+// if you are sure that a Snapshot will never be used again by any thread, you
+// may call Free once to release the memory earlier. No reads will be possible
+// on the snapshot after Free is called on it, however any open read
+// transactionss will not be interrupted.
 //
 // The following must be true for this function to succeed:
 //
@@ -43,41 +66,53 @@ type Snapshot struct {
 // - There must not be any transaction open on schema of conn.
 //
 // - At least one transaction must have been written to the current WAL file
-// since it was created on disk (by any connection). You can create and drop an
-// empty table to achieve this.
+// since it was created on disk (by any connection). You can run the following
+// SQL to ensure that a WAL file has been created.
+//      BEGIN IMMEDIATE;
+//      COMMIT;
 //
 // https://www.sqlite.org/c3ref/snapshot_get.html
-func (conn *Conn) CreateSnapshot(schema string) (*Snapshot, error) {
+func (conn *Conn) CreateSnapshot(schema string) (*Snapshot, func(), error) {
 	var s Snapshot
 	if schema == "" || schema == "main" {
 		s.schema = cmain
 	} else {
 		s.schema = C.CString(schema)
-		defer C.free(unsafe.Pointer(s.schema))
 	}
 
-	commit := conn.disableAutoCommitMode()
-	defer commit()
+	endRead, err := conn.disableAutoCommitMode()
+	if err != nil {
+		return err
+	}
 
 	res := C.sqlite3_snapshot_get(conn.conn, s.schema, &s.ptr)
-	if res == 0 {
-		runtime.SetFinalizer(&s, func(s *Snapshot) {
-			if s.ptr != nil {
-				panic("open *sqlite.Snapshot garbage collected, call Free method")
-			}
-		})
+	if res != 0 {
+		endRead()
+		return nil, nil, reserr("Conn.CreateSnapshot", "", "", res)
 	}
 
-	return &s, reserr("Conn.CreateSnapshot", "", "", res)
+	runtime.SetFinalizer(&s, func(s *Snapshot) {
+		if s.ptr != nil {
+			s.Free()
+		}
+	})
+
+	return &s, endRead, nil
 }
 
-// Free destroys a Snapshot. The application must eventually free every Snapshot
-// to avoid a memory leak.
+// Free destroys a Snapshot. Free must only be called once by one goroutine. It
+// is not necessary to call Free on a Snapshot, as it will get called
+// automatically by the GC in a finalizer. However if it is guaranteed that a
+// Snapshot will never be used again, calling Free will allow memory to be
+// freed earlier.
 //
 // https://www.sqlite.org/c3ref/snapshot_free.html
 func (s *Snapshot) Free() {
 	C.sqlite3_snapshot_free(s.ptr)
-	s.ptr = nil
+	if s.schema != cmain {
+		C.free(s.schema)
+	}
+	runtime.SetFinalizer(s, nil)
 }
 
 // CompareAges returns whether s1 is older, newer or the same age as s2. Age
@@ -90,7 +125,7 @@ func (s *Snapshot) Free() {
 // The result is valid only if both of the following are true:
 //
 // - The two snapshot handles are associated with the same database file.
-// 
+//
 // - Both of the Snapshots were obtained since the last time the wal file was
 // deleted.
 //
@@ -103,15 +138,19 @@ func (s *Snapshot) CompareAges(s2 *Snapshot) int {
 // transaction refers to historical Snapshot s, rather than the most recent
 // change to the database.
 //
-// There must be no open transaction on conn.
+// There must be no open transaction on conn. Free must not have been called on
+// s prior to or during this function call.
 //
 // If err is nil, then endRead is a function that will end the read transaction
-// and return conn to its original state. Until endRead is called, no writes may
-// occur on conn, and all reads on conn will refer to the Snapshot.
+// and return conn to its original state. Until endRead is called, no writes
+// may occur on conn, and all reads on conn will refer to the Snapshot.
 //
 // https://www.sqlite.org/c3ref/snapshot_open.html
 func (conn *Conn) StartSnapshotRead(s *Snapshot) (endRead func(), err error) {
-	endRead = conn.disableAutoCommitMode()
+	endRead, err = conn.disableAutoCommitMode()
+	if err != nil {
+		return
+	}
 	res := C.sqlite3_snapshot_open(conn.conn, s.schema, s.ptr)
 	if res != 0 {
 		endRead()
@@ -126,23 +165,13 @@ func (conn *Conn) StartSnapshotRead(s *Snapshot) (endRead func(), err error) {
 // transaction with `COMMIT;`, re-enabling autocommit mode.
 //
 // https://sqlite.org/c3ref/get_autocommit.html
-func (conn *Conn) disableAutoCommitMode() func() {
-	begin, _, err := conn.PrepareTransient("BEGIN;")
-	if err != nil {
-		panic(err)
-	}
-	defer begin.Finalize()
+func (conn *Conn) disableAutoCommitMode() (func(), error) {
+	begin := conn.Prep("BEGIN;")
 	if _, err := begin.Step(); err != nil {
-		panic(err)
+		return err
 	}
 	return func() {
-		commit, _, err := conn.PrepareTransient("COMMIT;")
-		if err != nil {
-			panic(err)
-		}
-		defer commit.Finalize()
-		if _, err := commit.Step(); err != nil {
-			panic(err)
-		}
-	}
+		commit := conn.Prep("COMMIT;")
+		commit.Step()
+	}, nil
 }
