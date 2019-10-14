@@ -83,6 +83,18 @@ func savepoint(conn *sqlite.Conn, name string) (releaseFn func(*error), err erro
 		}
 		recoverP := recover()
 
+		// If a query was interrupted or if a user exec'd COMMIT or
+		// ROLLBACK, then everything was already rolled back
+		// automatically, thus returning the connection to autocommit
+		// mode.
+		if conn.GetAutocommit() {
+			// There is nothing to rollback.
+			if recoverP != nil {
+				panic(recoverP)
+			}
+			return
+		}
+
 		if *errp == nil && recoverP == nil {
 			// Success path. Release the savepoint successfully.
 			*errp = Exec(conn, fmt.Sprintf("RELEASE %q;", name), nil)
@@ -90,6 +102,13 @@ func savepoint(conn *sqlite.Conn, name string) (releaseFn func(*error), err erro
 				return
 			}
 			// Possible interrupt. Fall through to the error path.
+			if conn.GetAutocommit() {
+				// There is nothing to rollback.
+				if recoverP != nil {
+					panic(recoverP)
+				}
+				return
+			}
 		}
 
 		orig := ""
@@ -98,14 +117,6 @@ func savepoint(conn *sqlite.Conn, name string) (releaseFn func(*error), err erro
 		}
 
 		// Error path.
-
-		// If a query was interrupted, then everything was already
-		// rolled back automatically, thus returning the connection to
-		// autocommit mode.
-		if conn.GetAutocommit() {
-			// There is nothing to rollback.
-			return
-		}
 
 		// Always run ROLLBACK even if the connection has been interrupted.
 		oldDoneCh := conn.SetInterrupt(nil)
