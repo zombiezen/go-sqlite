@@ -33,9 +33,9 @@ type Snapshot struct {
 	schema *C.char
 }
 
-// CreateSnapshot attempts to make a new Snapshot that records the current
-// state of the given schema in conn. If successful, a *Snapshot and a func()
-// is returned, and the conn will have an open READ transaction which will
+// GetSnapshot attempts to make a new Snapshot that records the current state
+// of the given schema in conn. If successful, a *Snapshot and a func() is
+// returned, and the conn will have an open READ transaction which will
 // continue to reflect the state of the Snapshot until the returned func() is
 // called. No WRITE transaction may occur on conn until the returned func() is
 // called.
@@ -43,21 +43,28 @@ type Snapshot struct {
 // The returned *Snapshot is threadsafe for creating additional read
 // transactions that reflect its state with Conn.StartSnapshotRead.
 //
-// So long as at least one read transaction is open on the Snapshot, then the
-// WAL file will not be checkpointed past that point, and the Snapshot will
-// continue to be available for creating additional read transactions. However,
-// if no read transaction is open on the Snapshot, then it is possible for the
-// WAL to be checkpointed past the point of the Snapshot. If this occurs then
-// there is no way to start a read on the Snapshot. In order to ensure that a
-// Snapshot remains readable, always maintain at least one open read
-// transaction on the Snapshot.
+// In theory, so long as at least one read transaction is open on the Snapshot,
+// then the WAL file will not be checkpointed past that point, and the Snapshot
+// will continue to be available for creating additional read transactions.
+// However, if no read transaction is open on the Snapshot, then it is possible
+// for the WAL to be checkpointed past the point of the Snapshot. If this
+// occurs then there is no way to start a read on the Snapshot. In order to
+// ensure that a Snapshot remains readable, always maintain at least one open
+// read transaction on the Snapshot.
+//
+// In practice, this is generally reliable but sometimes the Snapshot can
+// sometimes become unavailable for reads unless automatic checkpointing is
+// entirely disabled from the start.
 //
 // The returned *Snapshot has a finalizer that calls Free if it has not been
 // called, so it is safe to allow a Snapshot to be garbage collected. However,
 // if you are sure that a Snapshot will never be used again by any thread, you
 // may call Free once to release the memory earlier. No reads will be possible
-// on the snapshot after Free is called on it, however any open read
+// on the Snapshot after Free is called on it, however any open read
 // transactionss will not be interrupted.
+//
+// See sqlitex.Pool.GetSnapshot for a helper function for automatically keeping
+// an open read transaction on a set aside connection until a Snapshot is GC'd.
 //
 // The following must be true for this function to succeed:
 //
@@ -72,7 +79,7 @@ type Snapshot struct {
 //      COMMIT;
 //
 // https://www.sqlite.org/c3ref/snapshot_get.html
-func (conn *Conn) CreateSnapshot(schema string) (*Snapshot, func(), error) {
+func (conn *Conn) GetSnapshot(schema string) (*Snapshot, func(), error) {
 	var s Snapshot
 	if schema == "" || schema == "main" {
 		s.schema = cmain
@@ -92,27 +99,32 @@ func (conn *Conn) CreateSnapshot(schema string) (*Snapshot, func(), error) {
 	}
 
 	runtime.SetFinalizer(&s, func(s *Snapshot) {
-		if s.ptr != nil {
-			s.Free()
-		}
+		s.Free()
 	})
 
 	return &s, endRead, nil
 }
 
-// Free destroys a Snapshot. Free must only be called once by one goroutine. It
-// is not necessary to call Free on a Snapshot, as it will get called
-// automatically by the GC in a finalizer. However if it is guaranteed that a
-// Snapshot will never be used again, calling Free will allow memory to be
-// freed earlier.
+// Free destroys a Snapshot. Free is not threadsafe but may be called more than
+// once. However, it is not necessary to call Free on a Snapshot returned by
+// conn.GetSnapshot or pool.GetSnapshot as these set a finalizer that calls
+// free which will be run automatically by the GC in a finalizer. However if it
+// is guaranteed that a Snapshot will never be used again, calling Free will
+// allow memory to be freed earlier.
+//
+// A Snapshot may become unavailable for reads before Free is called if the WAL
+// is checkpointed into the DB past the point of the Snapshot.
 //
 // https://www.sqlite.org/c3ref/snapshot_free.html
 func (s *Snapshot) Free() {
+	if s.ptr == nil {
+		return
+	}
 	C.sqlite3_snapshot_free(s.ptr)
 	if s.schema != cmain {
 		C.free(unsafe.Pointer(s.schema))
 	}
-	runtime.SetFinalizer(s, nil)
+	s.ptr = nil
 }
 
 // CompareAges returns whether s1 is older, newer or the same age as s2. Age
@@ -151,6 +163,7 @@ func (conn *Conn) StartSnapshotRead(s *Snapshot) (endRead func(), err error) {
 	if err != nil {
 		return
 	}
+
 	res := C.sqlite3_snapshot_open(conn.conn, s.schema, s.ptr)
 	if res != 0 {
 		endRead()
@@ -162,16 +175,18 @@ func (conn *Conn) StartSnapshotRead(s *Snapshot) (endRead func(), err error) {
 
 // disableAutoCommitMode starts a read transaction with `BEGIN;`, disabling
 // autocommit mode, and returns a function which when called will end the read
-// transaction with `COMMIT;`, re-enabling autocommit mode.
+// transaction with `ROLLBACK;`, re-enabling autocommit mode.
 //
 // https://sqlite.org/c3ref/get_autocommit.html
 func (conn *Conn) disableAutoCommitMode() (func(), error) {
 	begin := conn.Prep("BEGIN;")
+	defer begin.Reset()
 	if _, err := begin.Step(); err != nil {
 		return nil, err
 	}
 	return func() {
-		commit := conn.Prep("COMMIT;")
-		commit.Step()
+		rollback := conn.Prep("ROLLBACK;")
+		defer rollback.Reset()
+		rollback.Step()
 	}, nil
 }
