@@ -40,6 +40,7 @@ type Session struct {
 
 // CreateSession creates a new session object.
 // If db is "", then a default of "main" is used.
+//
 // https://www.sqlite.org/session/sqlite3session_create.html
 func (conn *Conn) CreateSession(db string) (*Session, error) {
 	var cdb *C.char
@@ -118,6 +119,7 @@ func (s *Session) Diff(srcDB, tableName string) error {
 }
 
 // Changeset generates a changeset from a session.
+//
 // https://www.sqlite.org/session/sqlite3session_changeset.html
 func (s *Session) Changeset(w io.Writer) error {
 	x := newStrm(w, nil)
@@ -128,6 +130,7 @@ func (s *Session) Changeset(w io.Writer) error {
 }
 
 // Patchset generates a patchset from a session.
+//
 // https://www.sqlite.org/session/sqlite3session_patchset.html
 func (s *Session) Patchset(w io.Writer) error {
 	x := newStrm(w, nil)

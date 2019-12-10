@@ -41,6 +41,7 @@ type Backup struct {
 //
 // This is very similar to the first example function implemented on the
 // following page.
+//
 // https://www.sqlite.org/backup.html
 func (src *Conn) BackupToDB(srcDB, dstPath string) (dst *Conn, err error) {
 	if dst, err = OpenConn(dstPath, 0); err != nil {
