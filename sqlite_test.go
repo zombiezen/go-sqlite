@@ -629,3 +629,47 @@ func TestBusyTimeout(t *testing.T) {
 	c0Unlock()
 	<-done
 }
+
+func TestColumnIndex(t *testing.T) {
+	c, err := sqlite.OpenConn(":memory:", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := c.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	stmt, err := c.Prepare("CREATE TABLE IF NOT EXISTS columnindex (a, b, c);")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := stmt.Step(); err != nil {
+		t.Fatal(err)
+	}
+
+	stmt, err = c.Prepare("SELECT b, 1 AS d, a, c FROM columnindex")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cols := []struct {
+		name string
+		idx  int
+	}{
+		{"a", 2},
+		{"b", 0},
+		{"c", 3},
+		{"d", 1},
+		{"badcol", -1},
+	}
+
+	for _, col := range cols {
+		if got := stmt.ColumnIndex(col.name); got != col.idx {
+			t.Errorf("expected column %s to have index %d, got %d", col.name, col.idx, got)
+		}
+	}
+
+	stmt.Finalize()
+}

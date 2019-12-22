@@ -1030,6 +1030,17 @@ func (stmt *Stmt) ColumnTableName(col int) string {
 	return C.GoString((*C.char)(unsafe.Pointer(C.sqlite3_column_table_name(stmt.stmt, C.int(col)))))
 }
 
+// ColumnIndex returns the index of the column with the given name.
+//
+// If there is no column with the given name ColumnIndex returns -1.
+func (stmt *Stmt) ColumnIndex(colName string) int {
+	col, found := stmt.colNames[colName]
+	if !found {
+		return -1
+	}
+	return col
+}
+
 // GetInt64 returns a query result value for colName as an int64.
 func (stmt *Stmt) GetInt64(colName string) int64 {
 	col, found := stmt.colNames[colName]
