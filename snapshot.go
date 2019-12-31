@@ -184,8 +184,8 @@ func (conn *Conn) disableAutoCommitMode() (func(), error) {
 	if _, err := begin.Step(); err != nil {
 		return nil, err
 	}
+	rollback := conn.Prep("ROLLBACK;")
 	return func() {
-		rollback := conn.Prep("ROLLBACK;")
 		defer rollback.Reset()
 		rollback.Step()
 	}, nil

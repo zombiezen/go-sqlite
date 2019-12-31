@@ -75,7 +75,7 @@ func TestSnapshot(t *testing.T) {
 	conn, pool, cleanup := initDB(t)
 	defer cleanup()
 
-	s1, err := pool.GetSnapshot(nil)
+	s1, err := pool.GetSnapshot(nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}

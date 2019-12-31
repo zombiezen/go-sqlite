@@ -110,19 +110,19 @@ func TestConcurrentBuffer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer b1a.Close()
+
 	b1b, err := NewBuffer(conn1)
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer b1b.Close()
 
 	b2, err := NewBuffer(conn2)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	b1a.Close()
-	b1b.Close()
-	b2.Close()
+	defer b2.Close()
 }
 
 func TestBufferRand(t *testing.T) {

@@ -232,13 +232,14 @@ func TestPoolPutMatch(t *testing.T) {
 	}()
 
 	func() {
+		c := dbpool0.Get(nil)
 		defer func() {
 			if r := recover(); r == nil {
 				t.Error("expect put mismatch panic, got none")
 			}
+			dbpool0.Put(c)
 		}()
 
-		c := dbpool0.Get(nil)
 		dbpool1.Put(c)
 	}()
 }

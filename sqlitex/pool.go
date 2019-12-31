@@ -18,6 +18,7 @@ import (
 	"context"
 	"runtime/trace"
 	"sync"
+	"time"
 
 	"crawshaw.io/sqlite"
 )
@@ -51,8 +52,9 @@ type Pool struct {
 	free   chan *sqlite.Conn
 	closed chan struct{}
 
-	allMu sync.Mutex
-	all   map[*sqlite.Conn]struct{}
+	all map[*sqlite.Conn]context.CancelFunc
+
+	mu sync.RWMutex
 }
 
 // Open opens a fixed-size pool of SQLite connections.
@@ -81,61 +83,83 @@ func Open(uri string, flags sqlite.OpenFlags, poolSize int) (pool *Pool, err err
 	}()
 
 	if flags == 0 {
-		flags = sqlite.SQLITE_OPEN_READWRITE | sqlite.SQLITE_OPEN_CREATE | sqlite.SQLITE_OPEN_WAL | sqlite.SQLITE_OPEN_URI | sqlite.SQLITE_OPEN_NOMUTEX
+		flags = sqlite.SQLITE_OPEN_READWRITE |
+			sqlite.SQLITE_OPEN_CREATE |
+			sqlite.SQLITE_OPEN_WAL |
+			sqlite.SQLITE_OPEN_URI |
+			sqlite.SQLITE_OPEN_NOMUTEX
 	}
 
 	// sqlitex_pool is also defined in package sqlite
 	const sqlitex_pool = sqlite.OpenFlags(0x01000000)
 	flags |= sqlitex_pool
 
-	p.allMu.Lock()
-	defer p.allMu.Unlock()
-	p.all = make(map[*sqlite.Conn]struct{})
+	p.all = make(map[*sqlite.Conn]context.CancelFunc)
 	for i := 0; i < poolSize; i++ {
 		conn, err := sqlite.OpenConn(uri, flags)
 		if err != nil {
 			return nil, err
 		}
 		p.free <- conn
-		p.all[conn] = struct{}{}
+		p.all[conn] = func() {}
 	}
 
 	return p, nil
 }
 
-// Get gets an SQLite connection from the pool.
+// Get returns an SQLite connection from the Pool.
 //
-// If no Conn is available, Get will block until one is,
-// or until either the Pool is closed or the context
-// expires.
+// If no Conn is available, Get will block until one is, or until either the
+// Pool is closed or the context expires. If no Conn can be obtained, nil is
+// returned.
 //
-// The provided context is used to control the execution
-// lifetime of the connection. See Conn.SetInterrupt for
-// details.
+// The provided context is used to control the execution lifetime of the
+// connection. See Conn.SetInterrupt for details.
+//
+// Applications must ensure that all non-nil Conns returned from Get are
+// returned to the same Pool with Put.
 func (p *Pool) Get(ctx context.Context) *sqlite.Conn {
 	var tr sqlite.Tracer
-	var doneCh <-chan struct{}
 	if ctx != nil {
-		doneCh = ctx.Done()
 		tr = &tracer{ctx: ctx}
+	} else {
+		ctx = context.Background()
 	}
+	var cancel context.CancelFunc
+	ctx, cancel = context.WithCancel(ctx)
+
 	select {
-	case conn, ok := <-p.free:
-		if !ok {
-			return nil // pool is closed
+	case conn := <-p.free:
+		p.mu.Lock()
+		defer p.mu.Unlock()
+
+		select {
+		case <-p.closed:
+			p.free <- conn
+			break
+		default:
 		}
+
 		conn.SetTracer(tr)
-		conn.SetInterrupt(doneCh)
+		conn.SetInterrupt(ctx.Done())
+
+		p.all[conn] = cancel
+
 		return conn
-	case <-doneCh:
-		return nil
+	case <-ctx.Done():
 	case <-p.closed:
-		return nil
 	}
+	cancel()
+	return nil
 }
 
 // Put puts an SQLite connection back into the Pool.
-// A nil conn will cause Put to panic.
+//
+// Put will panic if conn is nil or if the conn was not originally created by
+// p.
+//
+// Applications must ensure that all non-nil Conns returned from Get are
+// returned to the same Pool with Put.
 func (p *Pool) Put(conn *sqlite.Conn) {
 	if conn == nil {
 		panic("attempted to Put a nil Conn into Pool")
@@ -143,43 +167,59 @@ func (p *Pool) Put(conn *sqlite.Conn) {
 	if p.checkReset {
 		query := conn.CheckReset()
 		if query != "" {
-			panic("connection returned to pool has active statement: \"" + query + "\"")
+			panic("connection returned to pool has active statement: \"" +
+				query + "\"")
 		}
 	}
 
-	p.allMu.Lock()
-	_, found := p.all[conn]
-	p.allMu.Unlock()
+	p.mu.RLock()
+	cancel, found := p.all[conn]
+	p.mu.RUnlock()
 
 	if !found {
 		panic("sqlite.Pool.Put: connection not created by this pool")
 	}
 
-	conn.SetTracer(nil)
-	conn.SetInterrupt(nil)
-	select {
-	case p.free <- conn:
-	default:
-	}
+	cancel()
+	p.free <- conn
 }
 
-// Close closes all the connections in the Pool.
+// PoolCloseTimeout is the
+var PoolCloseTimeout = 5 * time.Second
+
+// Close interrupts and closes all the connections in the Pool.
+//
+// Close blocks until all connections are returned to the Pool.
+//
+// Close will panic if not all connections are returned before
+// PoolCloseTimeout.
 func (p *Pool) Close() (err error) {
 	close(p.closed)
 
-	p.allMu.Lock()
-	for conn := range p.all {
-		err2 := conn.Close()
-		if err == nil {
-			err = err2
+	p.mu.RLock()
+	for _, cancel := range p.all {
+		cancel()
+	}
+	p.mu.RUnlock()
+
+	timeout := time.After(PoolCloseTimeout)
+	var closed int
+	for {
+		select {
+		case conn := <-p.free:
+			err2 := conn.Close()
+			if err == nil {
+				err = err2
+			}
+			closed++
+			if closed == len(p.all) {
+				return
+			}
+		case <-timeout:
+			panic("not all connections returned to Pool before timeout")
 		}
 	}
-	p.allMu.Unlock()
-
-	close(p.free)
-	for range p.free {
-	}
-	return err
+	return
 }
 
 type strerror struct {
