@@ -16,6 +16,7 @@ package sqlite
 
 // #include <sqlite3.h>
 // #include <stdlib.h>
+// #include "wrappers.h"
 // extern void func_tramp(sqlite3_context*, int, sqlite3_value**);
 // extern void step_tramp(sqlite3_context*, int, sqlite3_value**);
 // extern void final_tramp(sqlite3_context*);
@@ -52,7 +53,7 @@ func (ctx Context) ResultText(v string) {
 	if len(v) != 0 {
 		cv = C.CString(v)
 	}
-	C.sqlite3_result_text(ctx.ptr, cv, C.int(len(v)), (*[0]byte)(C.free))
+	C.sqlite3_result_text(ctx.ptr, cv, C.int(len(v)), (*[0]byte)(C.cfree))
 }
 func (ctx Context) ResultError(err error) {
 	if err, isError := err.(Error); isError {

@@ -41,6 +41,7 @@ package sqlite
 // #include <sqlite3.h>
 // #include <stdlib.h>
 // #include <string.h>
+// #include "wrappers.h"
 //
 // // Use a helper function here to avoid the cgo pointer detection
 // // logic treating SQLITE_TRANSIENT as a Go pointer.
@@ -797,7 +798,7 @@ func (stmt *Stmt) BindText(param int, value string) {
 		v = emptyCstr
 	} else {
 		v = C.CString(value)
-		free = (*[0]byte)(C.free)
+		free = (*[0]byte)(C.cfree)
 	}
 	res := C.sqlite3_bind_text(stmt.stmt, C.int(param), v, C.int(len(value)), free)
 	stmt.handleBindErr("BindText", res)
