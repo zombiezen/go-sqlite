@@ -20,10 +20,10 @@ func ConnCount(conn *Conn) int { return conn.count }
 
 func InterruptedStmt(conn *Conn, query string) *Stmt {
 	return &Stmt{
-		conn:         conn,
-		query:        query,
-		bindNames:    make(map[string]int),
-		colNames:     make(map[string]int),
-		prepInterupt: true,
+		conn:          conn,
+		query:         query,
+		bindNames:     make(map[string]int),
+		colNames:      make(map[string]int),
+		prepInterrupt: true,
 	}
 }
