@@ -6,7 +6,7 @@ import (
 
 func TestIncrementor(t *testing.T) {
 	start := 5
-	i := Incrementor(start)
+	i := NewIncrementor(start)
 	if i == nil {
 		t.Fatal("Incrementor returned nil")
 	}
