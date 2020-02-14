@@ -1,5 +1,9 @@
 package sqlite
 
+// BindIndexStart is the index of the first parameter when using the Stmt.Bind*
+// functions.
+const BindIndexStart = 1
+
 // BindIncrementor returns an Incrementor that starts on 1, the first index
 // used in Stmt.Bind* functions. This is provided as syntactic sugar for
 // binding parameter values to a Stmt. It allows for easily changing query
@@ -16,8 +20,12 @@ package sqlite
 //      }
 //      stmt.BindText(i(), c)           // i() == 3
 func BindIncrementor() Incrementor {
-	return NewIncrementor(1)
+	return NewIncrementor(BindIndexStart)
 }
+
+// ColumnIndexStart is the index of the first column when using the
+// Stmt.Column* functions.
+const ColumnIndexStart = 0
 
 // ColumnIncrementor returns an Incrementor that starts on 0, the first index
 // used in Stmt.Column* functions. This is provided as syntactic sugar for
@@ -31,7 +39,7 @@ func BindIncrementor() Incrementor {
 //      b := stmt.ColumnInt64(i())      // i() == 2
 //      c := stmt.ColumnText(i())       // i() == 3
 func ColumnIncrementor() Incrementor {
-	return NewIncrementor(0)
+	return NewIncrementor(ColumnIndexStart)
 }
 
 // NewIncrementor returns an Incrementor that starts on start.
