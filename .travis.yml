@@ -8,6 +8,7 @@ os:
   - "osx"
 
 go_import_path: crawshaw.io/sqlite
+go_import_path: crawshaw.io/iox/
 
 script:
     - make test
