@@ -1,14 +1,11 @@
 language: "go"
 
 go:
-  - "1.11.x"
+  - "1.13.x"
 
 os:
   - "linux"
   - "osx"
-
-go_import_path: crawshaw.io/sqlite
-go_import_path: crawshaw.io/iox/
 
 script:
     - make test
