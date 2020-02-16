@@ -16,5 +16,5 @@
 
 package sqlite
 
-// #cgo linux LDFLAGS: sqlite3.o
+// #cgo LDFLAGS: sqlite3.o
 import "C"
