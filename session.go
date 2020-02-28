@@ -141,12 +141,39 @@ func (s *Session) Patchset(w io.Writer) error {
 
 // ChangesetApply applies a changeset to the database.
 //
-// If a changeset will not apply cleanly then conflictFn
-// can be used to resolve the conflict. See the SQLite
-// documentation for full details.
+// If a changeset will not apply cleanly then conflictFn can be used to resolve
+// the conflict. See the SQLite documentation for full details.
 //
 // https://www.sqlite.org/session/sqlite3changeset_apply.html
-func (conn *Conn) ChangesetApply(r io.Reader, filterFn func(tableName string) bool, conflictFn func(ConflictType, ChangesetIter) ConflictAction) error {
+func (conn *Conn) ChangesetApply(r io.Reader,
+	filterFn func(tableName string) bool,
+	conflictFn func(ConflictType, ChangesetIter) ConflictAction) error {
+	return conn.changesetApply(r, filterFn, conflictFn, false)
+}
+
+// ChangesetApplyInverse applies the inverse of a changeset to the database.
+//
+// If a changeset will not apply cleanly then conflictFn can be used to resolve
+// the conflict. See the SQLite documentation for full details.
+//
+// This is equivalent to inverting a changeset using ChangesetInvert before
+// applying it. It is an error to use a patchset.
+//
+// https://www.sqlite.org/session/sqlite3changeset_apply.html
+//
+// https://www.sqlite.org/session/c_changesetapply_invert.html
+//
+// https://www.sqlite.org/session/sqlite3changeset_invert.html
+func (conn *Conn) ChangesetApplyInverse(r io.Reader,
+	filterFn func(tableName string) bool,
+	conflictFn func(ConflictType, ChangesetIter) ConflictAction) error {
+	return conn.changesetApply(r, filterFn, conflictFn, true)
+}
+
+func (conn *Conn) changesetApply(r io.Reader,
+	filterFn func(tableName string) bool,
+	conflictFn func(ConflictType, ChangesetIter) ConflictAction,
+	invert bool) error {
 	xIn := newStrm(nil, r)
 	x := &xapply{
 		conn:       conn,
@@ -168,8 +195,19 @@ func (conn *Conn) ChangesetApply(r io.Reader, filterFn func(tableName string) bo
 		conflictTramp = (*[0]byte)(C.xapply_conflict_tramp)
 	}
 
+	var flags C.int
+	if invert {
+		flags = C.SQLITE_CHANGESETAPPLY_INVERT
+	}
+
 	pCtx := unsafe.Pointer(uintptr(x.id))
-	res := C.sqlite3changeset_apply_strm(conn.conn, (*[0]byte)(C.strm_r_tramp), xIn.cptr(), filterTramp, conflictTramp, pCtx)
+	res := C.sqlite3changeset_apply_v2_strm(conn.conn,
+		(*[0]byte)(C.strm_r_tramp),
+		xIn.cptr(),
+		filterTramp, conflictTramp,
+		pCtx,
+		nil, nil,
+		flags)
 
 	xapplys.mu.Lock()
 	delete(xapplys.m, x.id)
