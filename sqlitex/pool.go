@@ -16,6 +16,7 @@ package sqlitex
 
 import (
 	"context"
+	"fmt"
 	"runtime/trace"
 	"sync"
 	"time"
@@ -167,8 +168,9 @@ func (p *Pool) Put(conn *sqlite.Conn) {
 	if p.checkReset {
 		query := conn.CheckReset()
 		if query != "" {
-			panic("connection returned to pool has active statement: \"" +
-				query + "\"")
+			panic(fmt.Sprintf(
+				"connection returned to pool has active statement: %q",
+				query))
 		}
 	}
 
@@ -203,17 +205,12 @@ func (p *Pool) Close() (err error) {
 	p.mu.RUnlock()
 
 	timeout := time.After(PoolCloseTimeout)
-	var closed int
-	for {
+	for closed := 0; closed < len(p.all); closed++ {
 		select {
 		case conn := <-p.free:
 			err2 := conn.Close()
 			if err == nil {
 				err = err2
-			}
-			closed++
-			if closed == len(p.all) {
-				return
 			}
 		case <-timeout:
 			panic("not all connections returned to Pool before timeout")
