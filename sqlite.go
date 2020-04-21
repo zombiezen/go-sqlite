@@ -73,10 +73,11 @@ import (
 //
 // A Conn can only be used by goroutine at a time.
 type Conn struct {
-	conn   *C.sqlite3
-	stmts  map[string]*Stmt // query -> prepared statement
-	closed bool
-	count  int // shared variable to help the race detector find Conn misuse
+	conn       *C.sqlite3
+	stmts      map[string]*Stmt // query -> prepared statement
+	authorizer int              // authorizer ID or -1
+	closed     bool
+	count      int // shared variable to help the race detector find Conn misuse
 
 	cancelCh   chan struct{}
 	tracer     Tracer
@@ -135,7 +136,8 @@ func openConn(path string, flags OpenFlags) (*Conn, error) {
 		flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_WAL | SQLITE_OPEN_URI | SQLITE_OPEN_NOMUTEX
 	}
 	conn := &Conn{
-		stmts: make(map[string]*Stmt),
+		stmts:      make(map[string]*Stmt),
+		authorizer: -1,
 		// A pointer to unlockNote is retained by C,
 		// so we allocate it on the C heap.
 		unlockNote: C.unlock_note_alloc(),
@@ -201,6 +203,7 @@ func (conn *Conn) Close() error {
 	res := C.sqlite3_close(conn.conn)
 	C.unlock_note_free(conn.unlockNote)
 	conn.unlockNote = nil
+	conn.releaseAuthorizer()
 	return reserr("Conn.Close", "", "", res)
 }
 
