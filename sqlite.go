@@ -1131,6 +1131,64 @@ func (stmt *Stmt) GetLen(colName string) int {
 	return stmt.ColumnLen(col)
 }
 
+// Limit is a category of performance limits.
+type Limit int
+
+// Limit categories.
+const (
+	SQLITE_LIMIT_LENGTH              = Limit(C.SQLITE_LIMIT_LENGTH)
+	SQLITE_LIMIT_SQL_LENGTH          = Limit(C.SQLITE_LIMIT_SQL_LENGTH)
+	SQLITE_LIMIT_COLUMN              = Limit(C.SQLITE_LIMIT_COLUMN)
+	SQLITE_LIMIT_EXPR_DEPTH          = Limit(C.SQLITE_LIMIT_EXPR_DEPTH)
+	SQLITE_LIMIT_COMPOUND_SELECT     = Limit(C.SQLITE_LIMIT_COMPOUND_SELECT)
+	SQLITE_LIMIT_VDBE_OP             = Limit(C.SQLITE_LIMIT_VDBE_OP)
+	SQLITE_LIMIT_FUNCTION_ARG        = Limit(C.SQLITE_LIMIT_FUNCTION_ARG)
+	SQLITE_LIMIT_ATTACHED            = Limit(C.SQLITE_LIMIT_ATTACHED)
+	SQLITE_LIMIT_LIKE_PATTERN_LENGTH = Limit(C.SQLITE_LIMIT_LIKE_PATTERN_LENGTH)
+	SQLITE_LIMIT_VARIABLE_NUMBER     = Limit(C.SQLITE_LIMIT_VARIABLE_NUMBER)
+	SQLITE_LIMIT_TRIGGER_DEPTH       = Limit(C.SQLITE_LIMIT_TRIGGER_DEPTH)
+	SQLITE_LIMIT_WORKER_THREADS      = Limit(C.SQLITE_LIMIT_WORKER_THREADS)
+)
+
+// String returns the limit's C constant name.
+func (limit Limit) String() string {
+	switch limit {
+	default:
+		var buf [20]byte
+		return "SQLITE_UNKNOWN_LIMIT(" + string(itoa(buf[:], int64(limit))) + ")"
+	case SQLITE_LIMIT_LENGTH:
+		return "SQLITE_LIMIT_LENGTH"
+	case SQLITE_LIMIT_SQL_LENGTH:
+		return "SQLITE_LIMIT_SQL_LENGTH"
+	case SQLITE_LIMIT_COLUMN:
+		return "SQLITE_LIMIT_COLUMN"
+	case SQLITE_LIMIT_EXPR_DEPTH:
+		return "SQLITE_LIMIT_EXPR_DEPTH"
+	case SQLITE_LIMIT_COMPOUND_SELECT:
+		return "SQLITE_LIMIT_COMPOUND_SELECT"
+	case SQLITE_LIMIT_VDBE_OP:
+		return "SQLITE_LIMIT_VDBE_OP"
+	case SQLITE_LIMIT_FUNCTION_ARG:
+		return "SQLITE_LIMIT_FUNCTION_ARG"
+	case SQLITE_LIMIT_ATTACHED:
+		return "SQLITE_LIMIT_ATTACHED"
+	case SQLITE_LIMIT_LIKE_PATTERN_LENGTH:
+		return "SQLITE_LIMIT_LIKE_PATTERN_LENGTH"
+	case SQLITE_LIMIT_VARIABLE_NUMBER:
+		return "SQLITE_LIMIT_VARIABLE_NUMBER"
+	case SQLITE_LIMIT_TRIGGER_DEPTH:
+		return "SQLITE_LIMIT_TRIGGER_DEPTH"
+	case SQLITE_LIMIT_WORKER_THREADS:
+		return "SQLITE_LIMIT_WORKER_THREADS"
+	}
+}
+
+// Limit queries or set one of a connection's limits. It returns the previous
+// value of the limit. Passing a negative value will keep the limit unchanged.
+func (conn *Conn) Limit(id Limit, newVal int) int {
+	return int(C.sqlite3_limit(conn.conn, C.int(id), C.int(newVal)))
+}
+
 var (
 	sqliteInit sync.Once
 )
