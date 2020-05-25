@@ -1132,6 +1132,8 @@ func (stmt *Stmt) GetLen(colName string) int {
 }
 
 // Limit is a category of performance limits.
+//
+// https://sqlite.org/c3ref/c_limit_attached.html
 type Limit int
 
 // Limit categories.
@@ -1183,10 +1185,13 @@ func (limit Limit) String() string {
 	}
 }
 
-// Limit queries or set one of a connection's limits. It returns the previous
-// value of the limit. Passing a negative value will keep the limit unchanged.
-func (conn *Conn) Limit(id Limit, newVal int) int {
-	return int(C.sqlite3_limit(conn.conn, C.int(id), C.int(newVal)))
+// Limit sets a runtime limit on the connection. The the previous value of the
+// limit is returned. Pass a negative value to check the limit without changing
+// it.
+//
+// https://sqlite.org/c3ref/limit.html
+func (conn *Conn) Limit(id Limit, value int) int {
+	return int(C.sqlite3_limit(conn.conn, C.int(id), C.int(value)))
 }
 
 var (
