@@ -19,8 +19,8 @@ func TestSetAuthorizer(t *testing.T) {
 
 	authResult := sqlite.AuthResult(0)
 	var lastAction sqlite.OpType
-	auth := sqlite.AuthorizeFunc(func(action sqlite.OpType, info sqlite.ActionInfo) sqlite.AuthResult {
-		lastAction = action
+	auth := sqlite.AuthorizeFunc(func(info sqlite.ActionInfo) sqlite.AuthResult {
+		lastAction = info.Action
 		return authResult
 	})
 	c.SetAuthorizer(auth)
