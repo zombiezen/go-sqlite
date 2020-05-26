@@ -1,10 +1,10 @@
 /*
   Copyright (c) 2020 David Crawshaw <david@zentus.com>
-  
+
   Permission to use, copy, modify, and distribute this software for any
   purpose with or without fee is hereby granted, provided that the above
   copyright notice and this permission notice appear in all copies.
-  
+
   THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
   WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
   MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
@@ -14,5 +14,18 @@
   OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 */
 
+#ifndef WRAPPERS_H
+#define WRAPPERS_H
+
 /* cfree wraps free to fix https://github.com/crawshaw/sqlite/issues/60 */
 void cfree(void *p);
+
+int c_strm_w_tramp(void*, const void*, int);
+int c_strm_r_tramp(void*, const void*, int*);
+
+int c_xapply_conflict_tramp(void*, int, sqlite3_changeset_iter*);
+int c_xapply_filter_tramp(void*, const char*);
+
+void c_destroy_tramp(void*);
+
+#endif // WRAPPERS_H

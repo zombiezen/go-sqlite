@@ -14,13 +14,104 @@
 
 package sqlite
 
-// #include <sqlite3.h>
+// #include <stdint.h>
 // #include <stdlib.h>
+// #include <sqlite3.h>
+// #include "wrappers.h"
 //
-// extern int strm_w_tramp(void*, char*, int);
-// extern int strm_r_tramp(void*, char*, int*);
-// extern int xapply_conflict_tramp(void*, int, sqlite3_changeset_iter*);
-// extern int xapply_filter_tramp(void*, char*);
+// extern int go_strm_w_tramp(uintptr_t, char*, int);
+// extern int go_strm_r_tramp(uintptr_t, char*, int*);
+//
+// static int go_sqlite3session_changeset_strm(
+//   sqlite3_session *pSession,
+//   int (*xOutput)(void *pOut, const void *pData, int nData),
+//   uintptr_t pOut
+// ) {
+//   return sqlite3session_changeset_strm(pSession, xOutput, (void *)pOut);
+// }
+//
+// static int go_sqlite3session_patchset_strm(
+//   sqlite3_session *pSession,
+//   int (*xOutput)(void *pOut, const void *pData, int nData),
+//   uintptr_t pOut
+// ) {
+//   return sqlite3session_patchset_strm(pSession, xOutput, (void *)pOut);
+// }
+//
+// static int go_sqlite3changeset_invert_strm(
+//   int (*xInput)(void *pIn, void *pData, int *pnData),
+//   uintptr_t pIn,
+//   int (*xOutput)(void *pOut, const void *pData, int nData),
+//   uintptr_t pOut
+// ) {
+//   return sqlite3changeset_invert_strm(xInput, (void *)pIn, xOutput, (void *)pOut);
+// }
+//
+// static int go_sqlite3changeset_apply_v2_strm(
+//   sqlite3 *db,                    /* Apply change to "main" db of this handle */
+//   int (*xInput)(void *pIn, void *pData, int *pnData), /* Input function */
+//   uintptr_t pIn,                                          /* First arg for xInput */
+//   int(*xFilter)(
+//     void *pCtx,                   /* Copy of sixth arg to _apply() */
+//     const char *zTab              /* Table name */
+//   ),
+//   int(*xConflict)(
+//     void *pCtx,                   /* Copy of sixth arg to _apply() */
+//     int eConflict,                /* DATA, MISSING, CONFLICT, CONSTRAINT */
+//     sqlite3_changeset_iter *p     /* Handle describing change and conflict */
+//   ),
+//   uintptr_t pCtx,                     /* First argument passed to xConflict */
+//   void **ppRebase, int *pnRebase,
+//   int flags
+// ) {
+//   return sqlite3changeset_apply_v2_strm(db,
+//     xInput,
+//     (void *)pIn,
+//     xFilter,
+//     xConflict,
+//     (void *)pCtx,
+//     ppRebase,
+//     pnRebase,
+//     flags
+//   );
+// }
+//
+// static int go_sqlite3changeset_concat_strm(
+//   int (*xInputA)(void *pIn, void *pData, int *pnData),
+//   uintptr_t pInA,
+//   int (*xInputB)(void *pIn, void *pData, int *pnData),
+//   uintptr_t pInB,
+//   int (*xOutput)(void *pOut, const void *pData, int nData),
+//   uintptr_t pOut
+// ) {
+//   return sqlite3changeset_concat_strm(
+//     xInputA, (void *)pInA,
+//     xInputB, (void *)pInB,
+//     xOutput, (void *)pOut
+//   );
+// }
+//
+// static int go_sqlite3changeset_start_strm(
+//   sqlite3_changeset_iter **pp,
+//   int (*xInput)(void *pIn, void *pData, int *pnData),
+//   uintptr_t pIn
+// ) {
+//   return sqlite3changeset_start_strm(pp, xInput, (void *)pIn);
+// }
+//
+// static int go_sqlite3changegroup_add_strm(sqlite3_changegroup* g,
+//     int (*xInput)(void *pIn, void *pData, int *pnData),
+//     uintptr_t pIn
+// ) {
+//   return sqlite3changegroup_add_strm(g, xInput, (void *)pIn);
+// }
+//
+// static int go_sqlite3changegroup_output_strm(sqlite3_changegroup* g,
+//     int (*xOutput)(void *pOut, const void *pData, int nData),
+//     uintptr_t pOut
+// ) {
+//   return sqlite3changegroup_output_strm(g, xOutput, (void *)pOut);
+// }
 import "C"
 import (
 	"io"
@@ -124,7 +215,7 @@ func (s *Session) Diff(srcDB, tableName string) error {
 func (s *Session) Changeset(w io.Writer) error {
 	x := newStrm(w, nil)
 	defer x.free()
-	res := C.sqlite3session_changeset_strm(s.ptr, (*[0]byte)(C.strm_w_tramp), x.cptr())
+	res := C.go_sqlite3session_changeset_strm(s.ptr, (*[0]byte)(C.c_strm_w_tramp), x.cptr())
 
 	return reserr("Session.Changeset", "", "", res)
 }
@@ -135,7 +226,7 @@ func (s *Session) Changeset(w io.Writer) error {
 func (s *Session) Patchset(w io.Writer) error {
 	x := newStrm(w, nil)
 	defer x.free()
-	res := C.sqlite3session_patchset_strm(s.ptr, (*[0]byte)(C.strm_w_tramp), x.cptr())
+	res := C.go_sqlite3session_patchset_strm(s.ptr, (*[0]byte)(C.c_strm_w_tramp), x.cptr())
 	return reserr("Session.Patchset", "", "", res)
 }
 
@@ -189,10 +280,10 @@ func (conn *Conn) changesetApply(r io.Reader,
 
 	var filterTramp, conflictTramp *[0]byte
 	if x.filterFn != nil {
-		filterTramp = (*[0]byte)(C.xapply_filter_tramp)
+		filterTramp = (*[0]byte)(C.c_xapply_filter_tramp)
 	}
 	if x.conflictFn != nil {
-		conflictTramp = (*[0]byte)(C.xapply_conflict_tramp)
+		conflictTramp = (*[0]byte)(C.c_xapply_conflict_tramp)
 	}
 
 	var flags C.int
@@ -200,9 +291,9 @@ func (conn *Conn) changesetApply(r io.Reader,
 		flags = C.SQLITE_CHANGESETAPPLY_INVERT
 	}
 
-	pCtx := unsafe.Pointer(uintptr(x.id))
-	res := C.sqlite3changeset_apply_v2_strm(conn.conn,
-		(*[0]byte)(C.strm_r_tramp),
+	pCtx := (C.uintptr_t)(x.id)
+	res := C.go_sqlite3changeset_apply_v2_strm(conn.conn,
+		(*[0]byte)(C.c_strm_r_tramp),
 		xIn.cptr(),
 		filterTramp, conflictTramp,
 		pCtx,
@@ -224,9 +315,9 @@ func (conn *Conn) changesetApply(r io.Reader,
 func ChangesetInvert(w io.Writer, r io.Reader) error {
 	xIn := newStrm(nil, r)
 	xOut := newStrm(w, nil)
-	res := C.sqlite3changeset_invert_strm(
-		(*[0]byte)(C.strm_r_tramp), xIn.cptr(),
-		(*[0]byte)(C.strm_w_tramp), xOut.cptr(),
+	res := C.go_sqlite3changeset_invert_strm(
+		(*[0]byte)(C.c_strm_r_tramp), xIn.cptr(),
+		(*[0]byte)(C.c_strm_w_tramp), xOut.cptr(),
 	)
 	xIn.free()
 	xOut.free()
@@ -240,10 +331,10 @@ func ChangesetConcat(w io.Writer, r1, r2 io.Reader) error {
 	xInA := newStrm(nil, r1)
 	xInB := newStrm(nil, r2)
 	xOut := newStrm(w, nil)
-	res := C.sqlite3changeset_concat_strm(
-		(*[0]byte)(C.strm_r_tramp), xInA.cptr(),
-		(*[0]byte)(C.strm_r_tramp), xInB.cptr(),
-		(*[0]byte)(C.strm_w_tramp), xOut.cptr(),
+	res := C.go_sqlite3changeset_concat_strm(
+		(*[0]byte)(C.c_strm_r_tramp), xInA.cptr(),
+		(*[0]byte)(C.c_strm_r_tramp), xInB.cptr(),
+		(*[0]byte)(C.c_strm_w_tramp), xOut.cptr(),
 	)
 	xInA.free()
 	xInB.free()
@@ -285,7 +376,10 @@ type ChangesetIter struct {
 func ChangesetIterStart(r io.Reader) (ChangesetIter, error) {
 	iter := ChangesetIter{}
 	iter.xIn = newStrm(nil, r)
-	res := C.sqlite3changeset_start_strm(&iter.ptr, (*[0]byte)(C.strm_r_tramp), iter.xIn.cptr())
+	res := C.go_sqlite3changeset_start_strm(
+		&iter.ptr,
+		(*[0]byte)(C.c_strm_r_tramp),
+		iter.xIn.cptr())
 	if err := reserr("ChangesetIterStart", "", "", res); err != nil {
 		return ChangesetIter{}, err
 	}
@@ -591,12 +685,15 @@ func NewChangegroup() (*Changegroup, error) {
 // https://www.sqlite.org/session/sqlite3changegroup_add.html
 func (cg Changegroup) Add(r io.Reader) error {
 	xIn := newStrm(nil, r)
-	res := C.sqlite3changegroup_add_strm(cg.ptr, (*[0]byte)(C.strm_r_tramp), xIn.cptr())
+	res := C.go_sqlite3changegroup_add_strm(
+		cg.ptr,
+		(*[0]byte)(C.c_strm_r_tramp),
+		xIn.cptr())
 	xIn.free()
 	return reserr("Changegroup.Add", "", "", res)
 }
 
-// Delete deletes a Changegroup.
+// Delete a Changegroup.
 //
 // https://www.sqlite.org/session/sqlite3changegroup_delete.html
 func (cg Changegroup) Delete() {
@@ -606,7 +703,10 @@ func (cg Changegroup) Delete() {
 // https://www.sqlite.org/session/sqlite3changegroup_output.html
 func (cg Changegroup) Output(w io.Writer) (n int, err error) {
 	xOut := newStrm(w, nil)
-	res := C.sqlite3changegroup_output_strm(cg.ptr, (*[0]byte)(C.strm_w_tramp), xOut.cptr())
+	res := C.go_sqlite3changegroup_output_strm(
+		cg.ptr,
+		(*[0]byte)(C.c_strm_w_tramp),
+		xOut.cptr())
 	n = xOut.n
 	xOut.free()
 	return n, reserr("Changegroup.Output", "", "", res)
@@ -620,7 +720,7 @@ type strm struct {
 }
 
 var strms = struct {
-	mu   sync.Mutex
+	mu   sync.RWMutex
 	m    map[int]*strm
 	next int
 }{
@@ -645,19 +745,19 @@ func (x strm) free() {
 	strms.mu.Unlock()
 }
 
-func (x *strm) cptr() unsafe.Pointer { return unsafe.Pointer(uintptr(x.id)) }
+func (x *strm) cptr() C.uintptr_t { return (C.uintptr_t)(x.id) }
 
-func getStrm(cptr unsafe.Pointer) *strm {
-	strms.mu.Lock()
-	x := strms.m[int(uintptr(cptr))]
-	strms.mu.Unlock()
+func getStrm(cptr uintptr) *strm {
+	strms.mu.RLock()
+	x := strms.m[int(cptr)]
+	strms.mu.RUnlock()
 
 	return x
 }
 
-//export strm_w_tramp
-func strm_w_tramp(pOut unsafe.Pointer, pData *C.char, n C.int) C.int {
-	//println("strm_w_tramp start")
+//export go_strm_w_tramp
+func go_strm_w_tramp(pOut uintptr, pData *C.char, n C.int) C.int {
+	//println("go_strm_w_tramp start")
 	x := getStrm(pOut)
 	b := (*[1 << 30]byte)(unsafe.Pointer(pData))[:n:n]
 	for len(b) > 0 {
@@ -672,12 +772,12 @@ func strm_w_tramp(pOut unsafe.Pointer, pData *C.char, n C.int) C.int {
 			return C.SQLITE_IOERR
 		}
 	}
-	//println("strm_w_tramp OK, nw=", nw)
+	//println("go_strm_w_tramp OK, nw=", nw)
 	return C.SQLITE_OK
 }
 
-//export strm_r_tramp
-func strm_r_tramp(pIn unsafe.Pointer, pData *C.char, pnData *C.int) C.int {
+//export go_strm_r_tramp
+func go_strm_r_tramp(pIn uintptr, pData *C.char, pnData *C.int) C.int {
 	x := getStrm(pIn)
 	b := (*[1 << 30]byte)(unsafe.Pointer(pData))[:*pnData:*pnData]
 
@@ -719,11 +819,18 @@ var xapplys = struct {
 	m: make(map[int]*xapply),
 }
 
-//export xapply_filter_tramp
-func xapply_filter_tramp(pCtx unsafe.Pointer, zTab *C.char) C.int {
+//export go_xapply_filter_tramp
+func go_xapply_filter_tramp(pCtx uintptr, zTab *C.char) C.int {
 	xapplys.mu.Lock()
-	x := xapplys.m[int(uintptr(pCtx))]
+	x, ok := xapplys.m[int(pCtx)]
 	xapplys.mu.Unlock()
+
+	if !ok {
+		panic("not ok")
+	}
+	if x == nil {
+		panic("x == nil")
+	}
 
 	tableName := C.GoString(zTab)
 	if x.filterFn(tableName) {
@@ -732,10 +839,10 @@ func xapply_filter_tramp(pCtx unsafe.Pointer, zTab *C.char) C.int {
 	return 0
 }
 
-//export xapply_conflict_tramp
-func xapply_conflict_tramp(pCtx unsafe.Pointer, eConflict C.int, p *C.sqlite3_changeset_iter) C.int {
+//export go_xapply_conflict_tramp
+func go_xapply_conflict_tramp(pCtx uintptr, eConflict C.int, p *C.sqlite3_changeset_iter) C.int {
 	xapplys.mu.Lock()
-	x := xapplys.m[int(uintptr(pCtx))]
+	x := xapplys.m[int(pCtx)]
 	xapplys.mu.Unlock()
 
 	action := x.conflictFn(ConflictType(eConflict), ChangesetIter{ptr: p})

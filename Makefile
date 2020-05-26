@@ -35,6 +35,8 @@ all: sqlite3.o
 test: sqlite3.o
 	go test  ./...
 
+test-race: sqlite3.o
+	go test -race  ./...
 env:
 	go env
 

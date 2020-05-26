@@ -14,13 +14,37 @@
 
 package sqlite
 
-// #include <sqlite3.h>
+// #include <stdint.h>
 // #include <stdlib.h>
+// #include <sqlite3.h>
 // #include "wrappers.h"
+//
 // extern void func_tramp(sqlite3_context*, int, sqlite3_value**);
 // extern void step_tramp(sqlite3_context*, int, sqlite3_value**);
 // extern void final_tramp(sqlite3_context*);
-// extern void destroy_tramp(void*);
+//
+// static int go_sqlite3_create_function_v2(
+//   sqlite3 *db,
+//   const char *zFunctionName,
+//   int nArg,
+//   int eTextRep,
+//   uintptr_t pApp,
+//   void (*xFunc)(sqlite3_context*,int,sqlite3_value**),
+//   void (*xStep)(sqlite3_context*,int,sqlite3_value**),
+//   void (*xFinal)(sqlite3_context*),
+//   void(*xDestroy)(void*)
+// ) {
+//   return sqlite3_create_function_v2(
+//     db,
+//     zFunctionName,
+//     nArg,
+//     eTextRep,
+//     (void *)pApp,
+//     xFunc,
+//     xStep,
+//     xFinal,
+//     xDestroy);
+// }
 import "C"
 import (
 	"sync"
@@ -139,7 +163,7 @@ func (conn *Conn) CreateFunction(name string, deterministic bool, numArgs int, x
 	xfuncs.m[x.id] = x
 	xfuncs.mu.Unlock()
 
-	pApp := unsafe.Pointer(uintptr(x.id))
+	pApp := C.uintptr_t(x.id)
 
 	var funcfn, stepfn, finalfn *[0]byte
 	if xFunc == nil {
@@ -149,7 +173,7 @@ func (conn *Conn) CreateFunction(name string, deterministic bool, numArgs int, x
 		funcfn = (*[0]byte)(C.func_tramp)
 	}
 
-	res := C.sqlite3_create_function_v2(
+	res := C.go_sqlite3_create_function_v2(
 		conn.conn,
 		cname,
 		C.int(numArgs),
@@ -158,7 +182,7 @@ func (conn *Conn) CreateFunction(name string, deterministic bool, numArgs int, x
 		funcfn,
 		stepfn,
 		finalfn,
-		(*[0]byte)(C.destroy_tramp),
+		(*[0]byte)(C.c_destroy_tramp),
 	)
 	return conn.reserr("Conn.CreateFunction", name, res)
 }
@@ -199,9 +223,9 @@ func final_tramp(ctx *C.sqlite3_context) {
 	x.xFinal(Context{ptr: ctx})
 }
 
-//export destroy_tramp
-func destroy_tramp(ptr unsafe.Pointer) {
-	id := int(uintptr(ptr))
+//export go_destroy_tramp
+func go_destroy_tramp(ptr uintptr) {
+	id := int(ptr)
 
 	xfuncs.mu.Lock()
 	delete(xfuncs.m, id)

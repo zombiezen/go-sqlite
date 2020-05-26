@@ -33,7 +33,7 @@ https://www.sqlite.org/sharedcache.html
 The implementation automatically handles shared cache locking,
 see the documentation on Stmt.Step for details.
 
-The optional SQLite3 compiled in are: FTS5, RTree, JSON1, Session
+The optional SQLite3 compiled in are: FTS5, RTree, JSON1, Session, GeoPoly
 
 This is not a database/sql driver.
 
