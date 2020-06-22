@@ -87,37 +87,14 @@ type Conn struct {
 	line       int
 }
 
-// OpenFlags are flags used when opening a Conn.
-//
-// https://www.sqlite.org/c3ref/c_open_autoproxy.html
-type OpenFlags int
-
-const (
-	SQLITE_OPEN_READONLY       = OpenFlags(C.SQLITE_OPEN_READONLY)
-	SQLITE_OPEN_READWRITE      = OpenFlags(C.SQLITE_OPEN_READWRITE)
-	SQLITE_OPEN_CREATE         = OpenFlags(C.SQLITE_OPEN_CREATE)
-	SQLITE_OPEN_URI            = OpenFlags(C.SQLITE_OPEN_URI)
-	SQLITE_OPEN_MEMORY         = OpenFlags(C.SQLITE_OPEN_MEMORY)
-	SQLITE_OPEN_MAIN_DB        = OpenFlags(C.SQLITE_OPEN_MAIN_DB)
-	SQLITE_OPEN_TEMP_DB        = OpenFlags(C.SQLITE_OPEN_TEMP_DB)
-	SQLITE_OPEN_TRANSIENT_DB   = OpenFlags(C.SQLITE_OPEN_TRANSIENT_DB)
-	SQLITE_OPEN_MAIN_JOURNAL   = OpenFlags(C.SQLITE_OPEN_MAIN_JOURNAL)
-	SQLITE_OPEN_TEMP_JOURNAL   = OpenFlags(C.SQLITE_OPEN_TEMP_JOURNAL)
-	SQLITE_OPEN_SUBJOURNAL     = OpenFlags(C.SQLITE_OPEN_SUBJOURNAL)
-	SQLITE_OPEN_MASTER_JOURNAL = OpenFlags(C.SQLITE_OPEN_MASTER_JOURNAL)
-	SQLITE_OPEN_NOMUTEX        = OpenFlags(C.SQLITE_OPEN_NOMUTEX)
-	SQLITE_OPEN_FULLMUTEX      = OpenFlags(C.SQLITE_OPEN_FULLMUTEX)
-	SQLITE_OPEN_SHAREDCACHE    = OpenFlags(C.SQLITE_OPEN_SHAREDCACHE)
-	SQLITE_OPEN_PRIVATECACHE   = OpenFlags(C.SQLITE_OPEN_PRIVATECACHE)
-	SQLITE_OPEN_WAL            = OpenFlags(C.SQLITE_OPEN_WAL)
-)
-
 // sqlitex_pool is used by sqlitex.Open to tell OpenConn that there is
 // one more layer in the stack calls before reaching a user function.
 const sqlitex_pool = OpenFlags(0x01000000)
 
-// OpenConn opens a single SQLite database connection.
-// A flags value of 0 defaults to:
+// OpenConn opens a single SQLite database connection with the given flags.
+//
+// No flags or a value of 0 defaults to OpenFlagsDefault which includes the
+// following:
 //
 //	SQLITE_OPEN_READWRITE
 //	SQLITE_OPEN_CREATE
@@ -126,14 +103,18 @@ const sqlitex_pool = OpenFlags(0x01000000)
 //	SQLITE_OPEN_NOMUTEX
 //
 // https://www.sqlite.org/c3ref/open.html
-func OpenConn(path string, flags OpenFlags) (*Conn, error) {
-	return openConn(path, flags)
+func OpenConn(path string, flags ...OpenFlags) (*Conn, error) {
+	return openConn(path, flags...)
 }
-
-func openConn(path string, flags OpenFlags) (*Conn, error) {
+func openConn(path string, flags ...OpenFlags) (*Conn, error) {
 	sqliteInit.Do(sqliteInitFn)
-	if flags == 0 {
-		flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_WAL | SQLITE_OPEN_URI | SQLITE_OPEN_NOMUTEX
+
+	var openFlags OpenFlags
+	for _, f := range flags {
+		openFlags |= f
+	}
+	if openFlags == 0 {
+		openFlags = OpenFlagsDefault
 	}
 	conn := &Conn{
 		stmts:      make(map[string]*Stmt),
@@ -147,12 +128,12 @@ func openConn(path string, flags OpenFlags) (*Conn, error) {
 	defer C.free(unsafe.Pointer(cpath))
 
 	stackCallerLayers := 2 // caller of OpenConn or Open
-	if flags&sqlitex_pool != 0 {
+	if openFlags&sqlitex_pool != 0 {
 		stackCallerLayers = 3 // caller of sqlitex.Open
 	}
-	flags = flags &^ sqlitex_pool
+	openFlags &^= sqlitex_pool
 
-	res := C.sqlite3_open_v2(cpath, &conn.conn, C.int(flags), nil)
+	res := C.sqlite3_open_v2(cpath, &conn.conn, C.int(openFlags), nil)
 	if res != 0 {
 		extres := C.sqlite3_extended_errcode(conn.conn)
 		if extres != 0 {
@@ -172,7 +153,7 @@ func openConn(path string, flags OpenFlags) (*Conn, error) {
 		}
 	})
 
-	if flags&SQLITE_OPEN_WAL > 0 {
+	if openFlags&SQLITE_OPEN_WAL > 0 {
 		stmt, _, err := conn.PrepareTransient("PRAGMA journal_mode=wal;")
 		if err != nil {
 			conn.Close()
