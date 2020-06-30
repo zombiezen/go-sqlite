@@ -386,7 +386,7 @@ func TestBindBytes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	stmt = c.Prep("SELECT count(*) FROM bindbytes WHERE c = $bytes;")
+	stmt = c.Prep("SELECT count(*) FROM bindbytes WHERE c = CAST($bytes AS TEXT);")
 	stmt.SetText("$bytes", "column_value")
 	if hasRow, err := stmt.Step(); err != nil {
 		t.Fatal(err)
