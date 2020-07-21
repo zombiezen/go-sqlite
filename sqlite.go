@@ -676,7 +676,7 @@ func (stmt *Stmt) step() (bool, error) {
 			return true, nil
 		case C.SQLITE_DONE:
 			return false, nil
-		case C.SQLITE_INTERRUPT, C.SQLITE_CONSTRAINT:
+		case C.SQLITE_INTERRUPT:
 			// TODO: embed some of these errors into the stmt for zero-alloc errors?
 			return false, stmt.conn.reserr("Stmt.Step", stmt.query, res)
 		default:
