@@ -129,6 +129,7 @@ func (p *Pool) Get(ctx context.Context) *sqlite.Conn {
 	var cancel context.CancelFunc
 	ctx, cancel = context.WithCancel(ctx)
 
+outer:
 	select {
 	case conn := <-p.free:
 		p.mu.Lock()
@@ -137,7 +138,7 @@ func (p *Pool) Get(ctx context.Context) *sqlite.Conn {
 		select {
 		case <-p.closed:
 			p.free <- conn
-			break
+			break outer
 		default:
 		}
 
