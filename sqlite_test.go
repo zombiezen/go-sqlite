@@ -15,6 +15,7 @@
 package sqlite_test
 
 import (
+	"bytes"
 	"context"
 	"io/ioutil"
 	"os"
@@ -376,18 +377,87 @@ func TestBindBytes(t *testing.T) {
 		}
 	}()
 
+	val := make([]byte, 32)
+	copy(val[5:], []byte("hello world"))
+
 	stmt := c.Prep("CREATE TABLE IF NOT EXISTS bindbytes (c);")
 	if _, err := stmt.Step(); err != nil {
 		t.Fatal(err)
 	}
 	stmt = c.Prep("INSERT INTO bindbytes (c) VALUES ($bytes);")
-	stmt.SetText("$bytes", "column_value")
+	stmt.SetBytes("$bytes", val)
 	if _, err := stmt.Step(); err != nil {
 		t.Fatal(err)
 	}
 
-	stmt = c.Prep("SELECT count(*) FROM bindbytes WHERE c = CAST($bytes AS TEXT);")
-	stmt.SetText("$bytes", "column_value")
+	stmt = c.Prep("SELECT count(*) FROM bindbytes WHERE c = $bytes;")
+	stmt.SetBytes("$bytes", val)
+	if hasRow, err := stmt.Step(); err != nil {
+		t.Fatal(err)
+	} else if !hasRow {
+		t.Error("SetBytes: result has no row")
+	}
+	if got := stmt.ColumnInt(0); got != 1 {
+		t.Errorf("SetBytes: count is %d, want 1", got)
+	}
+
+	stmt.Reset()
+
+	stmt.SetBytes("$bytes", val)
+	if hasRow, err := stmt.Step(); err != nil {
+		t.Fatal(err)
+	} else if !hasRow {
+		t.Error("SetBytes: result has no row")
+	}
+	if got := stmt.ColumnInt(0); got != 1 {
+		t.Errorf("SetBytes: count is %d, want 1", got)
+	}
+
+	blob, err := c.OpenBlob("", "bindbytes", "c", 1, false)
+	if err != nil {
+		t.Fatalf("SetBytes: OpenBlob: %v", err)
+	}
+	defer func() {
+		if err := blob.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	storedVal := make([]byte, 40)
+	n, err := blob.Read(storedVal)
+	if err != nil {
+		t.Fatalf("SetBytes: Read: %v", err)
+	}
+	if !bytes.Equal(val, storedVal[:n]) {
+		t.Fatalf("SetBytes: want: %x, got: %x", val, storedVal)
+	}
+}
+
+func TestBindText(t *testing.T) {
+	c, err := sqlite.OpenConn(":memory:", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := c.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	const val = "column_value"
+
+	stmt := c.Prep("CREATE TABLE IF NOT EXISTS bindtext (c);")
+	if _, err := stmt.Step(); err != nil {
+		t.Fatal(err)
+	}
+	stmt = c.Prep("INSERT INTO bindtext (c) VALUES ($text);")
+	stmt.SetText("$text", val)
+	if _, err := stmt.Step(); err != nil {
+		t.Fatal(err)
+	}
+
+	stmt = c.Prep("SELECT count(*) FROM bindtext WHERE c = $text;")
+	stmt.SetText("$text", val)
 	if hasRow, err := stmt.Step(); err != nil {
 		t.Fatal(err)
 	} else if !hasRow {
@@ -399,14 +469,14 @@ func TestBindBytes(t *testing.T) {
 
 	stmt.Reset()
 
-	stmt.SetBytes("$bytes", []byte("column_value"))
+	stmt.SetText("$text", val)
 	if hasRow, err := stmt.Step(); err != nil {
 		t.Fatal(err)
 	} else if !hasRow {
-		t.Error("SetBytes: result has no row")
+		t.Error("SetText: result has no row")
 	}
 	if got := stmt.ColumnInt(0); got != 1 {
-		t.Errorf("SetBytes: count is %d, want 1", got)
+		t.Errorf("SetText: count is %d, want 1", got)
 	}
 }
 
