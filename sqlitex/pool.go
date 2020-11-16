@@ -110,48 +110,36 @@ func Open(uri string, flags sqlite.OpenFlags, poolSize int) (pool *Pool, err err
 
 // Get returns an SQLite connection from the Pool.
 //
-// If no Conn is available, Get will block until one is, or until either the
-// Pool is closed or the context expires. If no Conn can be obtained, nil is
-// returned.
+// If no Conn is available, Get will block until at least one Conn is returned
+// with Put, or until either the Pool is closed or the context is canceled. If
+// no Conn can be obtained, nil is returned.
 //
-// The provided context is used to control the execution lifetime of the
+// The provided context is also used to control the execution lifetime of the
 // connection. See Conn.SetInterrupt for details.
 //
 // Applications must ensure that all non-nil Conns returned from Get are
 // returned to the same Pool with Put.
+//
+// Although ctx historically may be nil, this is not a recommended design
+// pattern.
 func (p *Pool) Get(ctx context.Context) *sqlite.Conn {
-	var tr sqlite.Tracer
-	if ctx != nil {
-		tr = &tracer{ctx: ctx}
-	} else {
+	if ctx == nil {
 		ctx = context.Background()
 	}
-	var cancel context.CancelFunc
-	ctx, cancel = context.WithCancel(ctx)
-
-outer:
 	select {
 	case conn := <-p.free:
-		p.mu.Lock()
-		defer p.mu.Unlock()
-
-		select {
-		case <-p.closed:
-			p.free <- conn
-			break outer
-		default:
-		}
-
-		conn.SetTracer(tr)
+		ctx, cancel := context.WithCancel(ctx)
+		conn.SetTracer(&tracer{ctx: ctx})
 		conn.SetInterrupt(ctx.Done())
 
+		p.mu.Lock()
+		defer p.mu.Unlock()
 		p.all[conn] = cancel
 
 		return conn
 	case <-ctx.Done():
 	case <-p.closed:
 	}
-	cancel()
 	return nil
 }
 
