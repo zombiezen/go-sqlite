@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -742,6 +743,35 @@ func TestColumnIndex(t *testing.T) {
 	}
 
 	stmt.Finalize()
+}
+
+func TestBindParamName(t *testing.T) {
+	c, err := sqlite.OpenConn(":memory:", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := c.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	stmt, err := c.Prepare("SELECT :foo, :bar;")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stmt.Finalize()
+
+	var got []string
+	for i, n := 1, stmt.BindParamCount(); i <= n; i++ {
+		got = append(got, stmt.BindParamName(i))
+	}
+	// We don't care what indices SQLite picked, so sort returned names.
+	sort.Strings(got)
+	want := []string{":bar", ":foo"}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("names = %q; want %q", got, want)
+	}
 }
 
 func TestLimit(t *testing.T) {
