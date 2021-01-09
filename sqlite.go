@@ -438,7 +438,7 @@ func (conn *Conn) prepare(query string, flags C.uint) (*Stmt, int, error) {
 	}
 	trailingBytes := int(C.strlen(ctrailing))
 
-	stmt.bindNames = make([]string, stmt.BindParamCount())
+	stmt.bindNames = make([]string, int(C.sqlite3_bind_parameter_count(stmt.stmt)))
 	for i := range stmt.bindNames {
 		cname := C.sqlite3_bind_parameter_name(stmt.stmt, C.int(i+1))
 		if cname != nil {
@@ -733,7 +733,7 @@ func (stmt *Stmt) BindParamCount() int {
 	if stmt.stmt == nil {
 		return 0
 	}
-	return int(C.sqlite3_bind_parameter_count(stmt.stmt))
+	return len(stmt.bindNames)
 }
 
 // BindParamName returns the name of parameter or the empty string if the
