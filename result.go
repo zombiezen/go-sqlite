@@ -4,6 +4,7 @@
 package sqlite
 
 import (
+	"errors"
 	"fmt"
 
 	"modernc.org/libc"
@@ -334,5 +335,18 @@ type sqliteError struct {
 }
 
 func (e sqliteError) Error() string {
-	return e.code.String()
+	return e.code.Message()
+}
+
+// ErrorCode returns the error's SQLite error code or ResultError if the error
+// does not represent a SQLite error. ErrorCode returns ResultOK if and only if
+// the error is nil.
+func ErrorCode(err error) ResultCode {
+	if err == nil {
+		return ResultOK
+	}
+	if e := new(sqliteError); errors.As(err, e) {
+		return e.code
+	}
+	return ResultError
 }
