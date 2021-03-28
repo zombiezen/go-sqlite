@@ -1,0 +1,10 @@
+# Copyright 2021 Ross Light
+# SPDX-License-Identifier: ISC
+
+version: 2
+updates:
+- package-ecosystem: github-actions
+  directory: /
+  schedule:
+    interval: daily
+  reviewers: [zombiezen]

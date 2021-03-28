@@ -1,0 +1,18 @@
+# Copyright 2021 Ross Light
+# SPDX-License-Identifier: ISC
+
+name: Publish
+on:
+  release:
+    types: [published]
+jobs:
+  go-get:
+    name: go get
+    runs-on: ubuntu-latest
+    steps:
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: 1.16
+    - name: Fetch release from proxy
+      run: go get -d zombiezen.com/go/sqlite@"$(echo "$GITHUB_REF" | sed -e 's:^refs/tags/::')"
