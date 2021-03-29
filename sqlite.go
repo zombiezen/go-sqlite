@@ -1,11 +1,28 @@
-// Copyright 2021 Ross Light
+// Copyright (c) 2018 David Crawshaw <david@zentus.com>
+// Copyright (c) 2021 Ross Light <ross@zombiezen.com>
+//
+// Permission to use, copy, modify, and distribute this software for any
+// purpose with or without fee is hereby granted, provided that the above
+// copyright notice and this permission notice appear in all copies.
+//
+// THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+// WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+// MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+// ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+// WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+// ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+// OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+//
 // SPDX-License-Identifier: ISC
 
 package sqlite
 
 import (
+	"bytes"
 	"fmt"
+	"reflect"
 	"strings"
+	"time"
 	"unsafe"
 
 	"modernc.org/libc"
@@ -20,37 +37,76 @@ type Conn struct {
 	tls    *libc.TLS
 	conn   uintptr
 	closed bool
+
+	cancelCh   chan struct{}
+	doneCh     <-chan struct{}
+	unlockNote uintptr
+	file       string
+	line       int
 }
-
-// OpenFlags are flags used when opening a Conn.
-//
-// https://www.sqlite.org/c3ref/c_open_autoproxy.html
-type OpenFlags int
-
-const (
-	OpenReadOnly      = OpenFlags(lib.SQLITE_OPEN_READONLY)
-	OpenReadWrite     = OpenFlags(lib.SQLITE_OPEN_READWRITE)
-	OpenCreate        = OpenFlags(lib.SQLITE_OPEN_CREATE)
-	OpenURI           = OpenFlags(lib.SQLITE_OPEN_URI)
-	OpenMemory        = OpenFlags(lib.SQLITE_OPEN_MEMORY)
-	OpenMainDB        = OpenFlags(lib.SQLITE_OPEN_MAIN_DB)
-	OpenTempDB        = OpenFlags(lib.SQLITE_OPEN_TEMP_DB)
-	OpenTransientDB   = OpenFlags(lib.SQLITE_OPEN_TRANSIENT_DB)
-	OpenMainJournal   = OpenFlags(lib.SQLITE_OPEN_MAIN_JOURNAL)
-	OpenTempJournal   = OpenFlags(lib.SQLITE_OPEN_TEMP_JOURNAL)
-	OpenSubjournal    = OpenFlags(lib.SQLITE_OPEN_SUBJOURNAL)
-	OpenMasterJournal = OpenFlags(lib.SQLITE_OPEN_MASTER_JOURNAL)
-	OpenNoMutex       = OpenFlags(lib.SQLITE_OPEN_NOMUTEX)
-	OpenFullMutex     = OpenFlags(lib.SQLITE_OPEN_FULLMUTEX)
-	OpenSharedCache   = OpenFlags(lib.SQLITE_OPEN_SHAREDCACHE)
-	OpenPrivateCache  = OpenFlags(lib.SQLITE_OPEN_PRIVATECACHE)
-	OpenWAL           = OpenFlags(lib.SQLITE_OPEN_WAL)
-)
 
 const ptrSize = types.Size_t(unsafe.Sizeof(uintptr(0)))
 
-func OpenConn(path string, flags OpenFlags) (*Conn, error) {
+// OpenConn opens a single SQLite database connection with the given flags.
+// No flags or a value of 0 defaults to the following:
+//
+//	OpenReadWrite
+//	OpenCreate
+//	OpenWAL
+//	OpenURI
+//	OpenNoMutex
+//
+// https://www.sqlite.org/c3ref/open.html
+func OpenConn(path string, flags ...OpenFlags) (*Conn, error) {
+	var openFlags OpenFlags
+	for _, f := range flags {
+		openFlags |= f
+	}
+	if openFlags == 0 {
+		openFlags = OpenReadWrite | OpenCreate | OpenWAL | OpenURI | OpenNoMutex
+	}
+
+	c, err := openConn(path, openFlags)
+	if err != nil {
+		return nil, err
+	}
+
+	if openFlags&OpenWAL != 0 {
+		stmt, _, err := c.PrepareTransient("PRAGMA journal_mode=wal;")
+		if err != nil {
+			c.Close()
+			return nil, fmt.Errorf("sqlite: open %q: %w", path, err)
+		}
+		defer stmt.Finalize()
+		if _, err := stmt.Step(); err != nil {
+			c.Close()
+			return nil, fmt.Errorf("sqlite: open %q: %w", path, err)
+		}
+	}
+
+	// Large timeout as Go programs should control timeouts
+	// using SetInterrupt. Documented in SetBusyTimeout.
+	c.SetBusyTimeout(10 * time.Second)
+
+	return c, nil
+}
+
+func openConn(path string, openFlags OpenFlags) (_ *Conn, err error) {
 	tls := libc.NewTLS()
+	defer func() {
+		if err != nil {
+			tls.Close()
+		}
+	}()
+	unlockNote, err := allocUnlockNote(tls)
+	if err != nil {
+		return nil, fmt.Errorf("sqlite: open %q: %w", path, err)
+	}
+	defer func() {
+		if err != nil {
+			libc.Xfree(tls, unlockNote)
+		}
+	}()
 	cpath, err := libc.CString(path)
 	if err != nil {
 		return nil, fmt.Errorf("sqlite: open %q: %w", path, err)
@@ -61,7 +117,7 @@ func OpenConn(path string, flags OpenFlags) (*Conn, error) {
 		return nil, fmt.Errorf("sqlite: open %q: %w", path, err)
 	}
 	defer libc.Xfree(tls, connPtr)
-	res := ResultCode(lib.Xsqlite3_open_v2(tls, cpath, connPtr, int32(flags), 0))
+	res := ResultCode(lib.Xsqlite3_open_v2(tls, cpath, connPtr, int32(openFlags), 0))
 	c := &Conn{
 		tls:  tls,
 		conn: *(*uintptr)(unsafe.Pointer(connPtr)),
@@ -70,38 +126,133 @@ func OpenConn(path string, flags OpenFlags) (*Conn, error) {
 		// Not enough memory to allocate the sqlite3 object.
 		return nil, fmt.Errorf("sqlite: open %q: %w", path, sqliteError{res})
 	}
-	if err := c.lastError(res); err != nil {
+	if res != ResultOK {
 		// sqlite3_open_v2 may still return a sqlite3* just so we can extract the error.
-		c.Close()
-		return nil, fmt.Errorf("sqlite: open %q: %w", path, c.lastError(res))
+		extres := ResultCode(lib.Xsqlite3_extended_errcode(tls, c.conn))
+		if extres != 0 {
+			res = extres
+		}
+		lib.Xsqlite3_close_v2(tls, c.conn)
+		return nil, fmt.Errorf("sqlite: open %q: %w", path, sqliteError{res})
 	}
+	lib.Xsqlite3_extended_result_codes(tls, c.conn, 1)
 	return c, nil
 }
 
 // Close closes the database connection using sqlite3_close and finalizes
 // persistent prepared statements. https://www.sqlite.org/c3ref/close.html
 func (c *Conn) Close() error {
+	c.cancelInterrupt()
 	c.closed = true
-	if res := ResultCode(lib.Xsqlite3_close(c.tls, c.conn)); !res.IsSuccess() {
+	// for _, stmt := range c.stmts {
+	// 	stmt.Finalize()
+	// }
+	res := ResultCode(lib.Xsqlite3_close(c.tls, c.conn))
+	libc.Xfree(c.tls, c.unlockNote)
+	c.unlockNote = 0
+	c.tls.Close()
+	c.tls = nil
+	if !res.IsSuccess() {
 		return fmt.Errorf("sqlite: close: %w", sqliteError{res})
 	}
 	return nil
 }
 
-func (c *Conn) lastError(res ResultCode) error {
-	if res.IsSuccess() {
-		return nil
+// SetInterrupt assigns a channel to control connection execution lifetime.
+//
+// When doneCh is closed, the connection uses sqlite3_interrupt to
+// stop long-running queries and cancels any *Stmt.Step calls that
+// are blocked waiting for the database write lock.
+//
+// Subsequent uses of the connection will return SQLITE_INTERRUPT
+// errors until doneCh is reset with a subsequent call to SetInterrupt.
+//
+// Typically, doneCh is provided by the Done method on a context.Context.
+// For example, a timeout can be associated with a connection session:
+//
+//	ctx := context.WithTimeout(context.Background(), 100*time.Millisecond)
+//	conn.SetInterrupt(ctx.Done())
+//
+// Any busy statements at the time SetInterrupt is called will be reset.
+//
+// SetInterrupt returns the old doneCh assigned to the connection.
+func (conn *Conn) SetInterrupt(doneCh <-chan struct{}) (oldDoneCh <-chan struct{}) {
+	if conn.closed {
+		panic("sqlite.Conn is closed")
 	}
-	return sqliteError{
-		code: ResultCode(lib.Xsqlite3_extended_errcode(c.tls, c.conn)),
+	oldDoneCh = conn.doneCh
+	conn.cancelInterrupt()
+	conn.doneCh = doneCh
+	// for _, stmt := range conn.stmts {
+	// 	if stmt.lastHasRow {
+	// 		stmt.Reset()
+	// 	}
+	// }
+	if doneCh == nil {
+		return oldDoneCh
+	}
+	cancelCh := make(chan struct{})
+	conn.cancelCh = cancelCh
+	go func() {
+		select {
+		case <-doneCh:
+			lib.Xsqlite3_interrupt(conn.tls, conn.conn)
+			fireUnlockNote(conn.tls, conn.unlockNote)
+			<-cancelCh
+			cancelCh <- struct{}{}
+		case <-cancelCh:
+			cancelCh <- struct{}{}
+		}
+	}()
+	return oldDoneCh
+}
+
+// SetBusyTimeout sets a busy handler that sleeps for up to d to acquire a lock.
+//
+// By default, a large busy timeout (10s) is set on the assumption that
+// Go programs use a context object via SetInterrupt to control timeouts.
+//
+// https://www.sqlite.org/c3ref/busy_timeout.html
+func (c *Conn) SetBusyTimeout(d time.Duration) {
+	lib.Xsqlite3_busy_timeout(c.tls, c.conn, int32(d/time.Millisecond))
+}
+
+func (conn *Conn) interrupted() error {
+	select {
+	case <-conn.doneCh:
+		return sqliteError{ResultInterrupt}
+	default:
+		return nil
 	}
 }
 
+func (c *Conn) cancelInterrupt() {
+	if c.cancelCh != nil {
+		c.cancelCh <- struct{}{}
+		<-c.cancelCh
+		c.cancelCh = nil
+	}
+}
+
+// PrepareTransient prepares an SQL statement that is not cached by
+// the Conn. Subsequent calls with the same query will create new Stmts.
+// Finalize must be called by the caller once done with the Stmt.
+//
+// The number of trailing bytes not consumed from query is returned.
+//
+// To run a sequence of queries once as part of a script,
+// the sqlitex package provides an ExecScript function built on this.
+//
+// https://www.sqlite.org/c3ref/prepare.html
 func (c *Conn) PrepareTransient(query string) (stmt *Stmt, trailingBytes int, err error) {
 	return c.prepare(query, 0)
 }
 
 func (c *Conn) prepare(query string, flags uint32) (*Stmt, int, error) {
+	if err := c.interrupted(); err != nil {
+		return nil, 0, err
+	}
+
 	cquery, err := libc.CString(query)
 	if err != nil {
 		return nil, 0, err
@@ -118,23 +269,87 @@ func (c *Conn) prepare(query string, flags uint32) (*Stmt, int, error) {
 	}
 	defer libc.Xfree(c.tls, stmtPtr)
 	res := ResultCode(lib.Xsqlite3_prepare_v3(c.tls, c.conn, cquery, -1, flags, stmtPtr, ctrailingPtr))
-	if err := c.lastError(res); err != nil {
+	if err := c.extreserr(res); err != nil {
 		return nil, 0, err
 	}
 	ctrailing := *(*uintptr)(unsafe.Pointer(ctrailingPtr))
 	trailingBytes := len(query) - int(ctrailing-cquery)
-	// TODO(now): Bind parameter names and column names.
-	return &Stmt{
+
+	stmt := &Stmt{
 		conn:  c,
 		query: query,
 		stmt:  *(*uintptr)(unsafe.Pointer(stmtPtr)),
-	}, trailingBytes, nil
+	}
+	stmt.bindNames = make([]string, lib.Xsqlite3_bind_parameter_count(c.tls, stmt.stmt))
+	for i := range stmt.bindNames {
+		cname := lib.Xsqlite3_bind_parameter_name(c.tls, stmt.stmt, int32(i+1))
+		if cname != 0 {
+			stmt.bindNames[i] = libc.GoString(cname)
+		}
+	}
+
+	colCount := int(lib.Xsqlite3_column_count(c.tls, stmt.stmt))
+	stmt.colNames = make(map[string]int, colCount)
+	for i := 0; i < colCount; i++ {
+		cname := lib.Xsqlite3_column_name(c.tls, stmt.stmt, int32(i))
+		if cname != 0 {
+			stmt.colNames[libc.GoString(cname)] = i
+		}
+	}
+
+	return stmt, trailingBytes, nil
 }
 
+// Changes reports the number of rows affected by the most recent statement.
+//
+// https://www.sqlite.org/c3ref/changes.html
+func (c *Conn) Changes() int {
+	return int(lib.Xsqlite3_changes(c.tls, c.conn))
+}
+
+// LastInsertRowID reports the rowid of the most recently successful INSERT.
+//
+// https://www.sqlite.org/c3ref/last_insert_rowid.html
+func (c *Conn) LastInsertRowID() int64 {
+	return lib.Xsqlite3_last_insert_rowid(c.tls, c.conn)
+}
+
+// extreserr asks SQLite for a string explaining the error.
+// Only called for errors that are probably program bugs.
+func (c *Conn) extreserr(res ResultCode) error {
+	if res.IsSuccess() {
+		return nil
+	}
+	if msg := libc.GoString(lib.Xsqlite3_errmsg(c.tls, c.conn)); msg != "" {
+		return fmt.Errorf("%w: %s", reserr(res), msg)
+	}
+	return reserr(res)
+}
+
+// Stmt is an SQLite3 prepared statement.
+//
+// A Stmt is attached to a particular Conn
+// (and that Conn can only be used by a single goroutine).
+//
+// When a Stmt is no longer needed it should be cleaned up
+// by calling the Finalize method.
 type Stmt struct {
-	conn  *Conn
-	query string
-	stmt  uintptr
+	conn          *Conn
+	stmt          uintptr
+	query         string
+	bindNames     []string
+	colCount      int
+	colNames      map[string]int
+	bindErr       error
+	prepInterrupt bool // set if Prep was interrupted
+	lastHasRow    bool // last bool returned by Step
+}
+
+func (stmt *Stmt) interrupted() error {
+	if stmt.prepInterrupt {
+		return sqliteError{ResultInterrupt}
+	}
+	return stmt.conn.interrupted()
 }
 
 // Finalize deletes a prepared statement.
@@ -147,33 +362,496 @@ type Stmt struct {
 //
 // https://www.sqlite.org/c3ref/finalize.html
 func (stmt *Stmt) Finalize() error {
+	// if ptr := stmt.conn.stmts[stmt.query]; ptr == stmt {
+	// 	delete(stmt.conn.stmts, stmt.query)
+	// }
 	res := ResultCode(lib.Xsqlite3_finalize(stmt.conn.tls, stmt.stmt))
-	err := stmt.conn.lastError(res)
 	stmt.conn = nil
-	if err != nil {
+	if err := reserr(res); err != nil {
 		return fmt.Errorf("sqlite: finalize: %w", err)
 	}
 	return nil
 }
 
+// Reset resets a prepared statement so it can be executed again.
+//
+// Note that any parameter values bound to the statement are retained.
+// To clear bound values, call ClearBindings.
+//
+// https://www.sqlite.org/c3ref/reset.html
+func (stmt *Stmt) Reset() error {
+	stmt.lastHasRow = false
+	var res ResultCode
+	for {
+		res = ResultCode(lib.Xsqlite3_reset(stmt.conn.tls, stmt.stmt))
+		if res != ResultLockedSharedCache {
+			break
+		}
+		// An SQLITE_LOCKED_SHAREDCACHE error has been seen from sqlite3_reset
+		// in the wild, but so far has eluded exact test case replication.
+		// TODO: write a test for this.
+		if res := waitForUnlockNotify(stmt.conn.tls, stmt.conn.conn, stmt.conn.unlockNote); res != ResultOK {
+			return fmt.Errorf("sqlite: reset: %w", stmt.conn.extreserr(res))
+		}
+	}
+	if err := stmt.conn.extreserr(res); err != nil {
+		return fmt.Errorf("sqlite: reset: %w", err)
+	}
+	return nil
+}
+
+// ClearBindings clears all bound parameter values on a statement.
+//
+// https://www.sqlite.org/c3ref/clear_bindings.html
+func (stmt *Stmt) ClearBindings() error {
+	if err := stmt.interrupted(); err != nil {
+		return fmt.Errorf("sqlite: clear bindings: %w", err)
+	}
+	res := ResultCode(lib.Xsqlite3_clear_bindings(stmt.conn.tls, stmt.stmt))
+	if err := reserr(res); err != nil {
+		return fmt.Errorf("sqlite: clear bindings: %w", err)
+	}
+	return nil
+}
+
+// Step moves through the statement cursor using sqlite3_step.
+//
+// If a row of data is available, rowReturned is reported as true.
+// If the statement has reached the end of the available data then
+// rowReturned is false. Thus the status codes SQLITE_ROW and
+// SQLITE_DONE are reported by the rowReturned bool, and all other
+// non-OK status codes are reported as an error.
+//
+// If an error value is returned, then the statement has been reset.
+//
+// https://www.sqlite.org/c3ref/step.html
+//
+// Shared cache
+//
+// As the sqlite package enables shared cache mode by default
+// and multiple writers are common in multi-threaded programs,
+// this Step method uses sqlite3_unlock_notify to handle any
+// SQLITE_LOCKED errors.
+//
+// Without the shared cache, SQLite will block for
+// several seconds while trying to acquire the write lock.
+// With the shared cache, it returns SQLITE_LOCKED immediately
+// if the write lock is held by another connection in this process.
+// Dealing with this correctly makes for an unpleasant programming
+// experience, so this package does it automatically by blocking
+// Step until the write lock is relinquished.
+//
+// This means Step can block for a very long time.
+// Use SetInterrupt to control how long Step will block.
+//
+// For far more details, see:
+//
+//	http://www.sqlite.org/unlock_notify.html
 func (stmt *Stmt) Step() (rowReturned bool, err error) {
+	if stmt.bindErr != nil {
+		err = stmt.bindErr
+		stmt.bindErr = nil
+		stmt.Reset()
+		return false, fmt.Errorf("sqlite: step: %w", err)
+	}
 	rowReturned, err = stmt.step()
-	return
+	stmt.lastHasRow = rowReturned
+	if err != nil {
+		lib.Xsqlite3_reset(stmt.conn.tls, stmt.stmt)
+		return rowReturned, fmt.Errorf("sqlite: step: %w", err)
+	}
+	return rowReturned, nil
 }
 
 func (stmt *Stmt) step() (bool, error) {
 	for {
+		if err := stmt.interrupted(); err != nil {
+			return false, err
+		}
 		switch res := ResultCode(lib.Xsqlite3_step(stmt.conn.tls, stmt.stmt)); res.ToPrimary() {
 		case ResultLocked:
+			if res != ResultLockedSharedCache {
+				// don't call waitForUnlockNotify as it might deadlock, see:
+				// https://github.com/crawshaw/sqlite/issues/6
+				return false, stmt.conn.extreserr(res)
+			}
+
+			if res := waitForUnlockNotify(stmt.conn.tls, stmt.conn.conn, stmt.conn.unlockNote); !res.IsSuccess() {
+				return false, stmt.conn.extreserr(res)
+			}
+			lib.Xsqlite3_reset(stmt.conn.tls, stmt.stmt)
 			// loop
 		case ResultRow:
 			return true, nil
 		case ResultDone:
 			return false, nil
+		case ResultInterrupt:
+			// TODO: embed some of these errors into the stmt for zero-alloc errors?
+			return false, reserr(res)
 		default:
-			return false, fmt.Errorf("sqlite: step: %w", stmt.conn.lastError(res))
+			return false, stmt.conn.extreserr(res)
 		}
 	}
+}
+
+func (stmt *Stmt) handleBindErr(prefix string, res ResultCode) {
+	if stmt.bindErr == nil && !res.IsSuccess() {
+		stmt.bindErr = fmt.Errorf("%s: %w", prefix, reserr(res))
+	}
+}
+
+// DataCount returns the number of columns in the current row of the result
+// set of prepared statement.
+//
+// https://sqlite.org/c3ref/data_count.html
+func (stmt *Stmt) DataCount() int {
+	return int(lib.Xsqlite3_data_count(stmt.conn.tls, stmt.stmt))
+}
+
+// ColumnCount returns the number of columns in the result set returned by the
+// prepared statement.
+//
+// https://sqlite.org/c3ref/column_count.html
+func (stmt *Stmt) ColumnCount() int {
+	return int(lib.Xsqlite3_column_count(stmt.conn.tls, stmt.stmt))
+}
+
+// ColumnName returns the name assigned to a particular column in the result
+// set of a SELECT statement.
+//
+// https://sqlite.org/c3ref/column_name.html
+func (stmt *Stmt) ColumnName(col int) string {
+	return libc.GoString(lib.Xsqlite3_column_name(stmt.conn.tls, stmt.stmt, int32(col)))
+}
+
+// BindParamCount reports the number of parameters in stmt.
+//
+// https://www.sqlite.org/c3ref/bind_parameter_count.html
+func (stmt *Stmt) BindParamCount() int {
+	if stmt.stmt == 0 {
+		return 0
+	}
+	return len(stmt.bindNames)
+}
+
+// BindParamName returns the name of parameter or the empty string if the
+// parameter is nameless or i is out of range.
+//
+// Parameters indices start at 1.
+//
+// https://www.sqlite.org/c3ref/bind_parameter_name.html
+func (stmt *Stmt) BindParamName(i int) string {
+	i-- // map from 1-based to 0-based
+	if i < 0 || i >= len(stmt.bindNames) {
+		return ""
+	}
+	return stmt.bindNames[i]
+}
+
+// BindInt64 binds value to a numbered stmt parameter.
+//
+// Parameter indices start at 1.
+//
+// https://www.sqlite.org/c3ref/bind_blob.html
+func (stmt *Stmt) BindInt64(param int, value int64) {
+	if stmt.stmt == 0 {
+		return
+	}
+	res := ResultCode(lib.Xsqlite3_bind_int64(stmt.conn.tls, stmt.stmt, int32(param), value))
+	stmt.handleBindErr("bind int64", res)
+}
+
+// BindBool binds value (as an integer 0 or 1) to a numbered stmt parameter.
+//
+// Parameter indices start at 1.
+//
+// https://www.sqlite.org/c3ref/bind_blob.html
+func (stmt *Stmt) BindBool(param int, value bool) {
+	if stmt.stmt == 0 {
+		return
+	}
+	v := int64(0)
+	if value {
+		v = 1
+	}
+	res := ResultCode(lib.Xsqlite3_bind_int64(stmt.conn.tls, stmt.stmt, int32(param), v))
+	stmt.handleBindErr("bind bool", res)
+}
+
+// BindBytes binds value to a numbered stmt parameter.
+//
+// In-memory copies of value are made using this interface.
+// For large blobs, consider using the streaming Blob object.
+//
+// Parameter indices start at 1.
+//
+// https://www.sqlite.org/c3ref/bind_blob.html
+func (stmt *Stmt) BindBytes(param int, value []byte) {
+	if stmt.stmt == 0 {
+		return
+	}
+	allocSize := types.Size_t(len(value))
+	if allocSize == 0 {
+		allocSize = 1
+	}
+	v, err := malloc(stmt.conn.tls, allocSize)
+	if err != nil {
+		if stmt.bindErr == nil {
+			stmt.bindErr = fmt.Errorf("bind bytes: %w", err)
+		}
+		return
+	}
+	res := ResultCode(lib.Xsqlite3_bind_blob(stmt.conn.tls, stmt.stmt, int32(param), v, int32(len(value)), freeFuncPtr))
+	stmt.handleBindErr("bind bytes", res)
+}
+
+// freeFuncPtr is a conversion from function value to uintptr. It assumes
+// the memory representation described in https://golang.org/s/go11func.
+//
+// It does this by doing the following in order:
+// 1) Create a Go struct containing a pointer to a pointer to
+//    libc.Xfree. It is assumed that the pointer to libc.Xfree will be stored
+//    in the read-only data section and thus will not move.
+// 2) Convert the pointer to the Go struct to a pointer to uintptr through
+//    unsafe.Pointer. This is permitted via Rule #1 of unsafe.Pointer.
+// 3) Dereference the pointer to uintptr to obtain the function value as a
+//    uintptr. This is safe as long as function values are passed as pointers.
+var freeFuncPtr = *(*uintptr)(unsafe.Pointer(&struct {
+	f func(*libc.TLS, uintptr)
+}{libc.Xfree}))
+
+// BindText binds value to a numbered stmt parameter.
+//
+// Parameter indices start at 1.
+//
+// https://www.sqlite.org/c3ref/bind_blob.html
+func (stmt *Stmt) BindText(param int, value string) {
+	if stmt.stmt == 0 {
+		return
+	}
+	allocSize := types.Size_t(len(value))
+	if allocSize == 0 {
+		allocSize = 1
+	}
+	v, err := malloc(stmt.conn.tls, allocSize)
+	if err != nil {
+		if stmt.bindErr == nil {
+			stmt.bindErr = fmt.Errorf("bind text: %w", err)
+		}
+		return
+	}
+	res := ResultCode(lib.Xsqlite3_bind_text(stmt.conn.tls, stmt.stmt, int32(param), v, int32(len(value)), freeFuncPtr))
+	stmt.handleBindErr("bind text", res)
+}
+
+// BindFloat binds value to a numbered stmt parameter.
+//
+// Parameter indices start at 1.
+//
+// https://www.sqlite.org/c3ref/bind_blob.html
+func (stmt *Stmt) BindFloat(param int, value float64) {
+	if stmt.stmt == 0 {
+		return
+	}
+	res := ResultCode(lib.Xsqlite3_bind_double(stmt.conn.tls, stmt.stmt, int32(param), value))
+	stmt.handleBindErr("bind float", res)
+}
+
+// BindNull binds an SQL NULL value to a numbered stmt parameter.
+//
+// Parameter indices start at 1.
+//
+// https://www.sqlite.org/c3ref/bind_blob.html
+func (stmt *Stmt) BindNull(param int) {
+	if stmt.stmt == 0 {
+		return
+	}
+	res := ResultCode(lib.Xsqlite3_bind_null(stmt.conn.tls, stmt.stmt, int32(param)))
+	stmt.handleBindErr("bind null", res)
+}
+
+// BindNull binds a blob of zeros of length len to a numbered stmt parameter.
+//
+// Parameter indices start at 1.
+//
+// https://www.sqlite.org/c3ref/bind_blob.html
+func (stmt *Stmt) BindZeroBlob(param int, len int64) {
+	if stmt.stmt == 0 {
+		return
+	}
+	res := ResultCode(lib.Xsqlite3_bind_zeroblob64(stmt.conn.tls, stmt.stmt, int32(param), uint64(len)))
+	stmt.handleBindErr("bind zero blob", res)
+}
+
+func (stmt *Stmt) findBindName(prefix string, param string) int {
+	for i, name := range stmt.bindNames {
+		if name == param {
+			return i + 1 // 1-based indices
+		}
+	}
+	if stmt.bindErr == nil {
+		stmt.bindErr = fmt.Errorf("%s: unknown parameter: %s", prefix, param)
+	}
+	return 0
+}
+
+// SetInt64 binds an int64 to a parameter using a column name.
+func (stmt *Stmt) SetInt64(param string, value int64) {
+	stmt.BindInt64(stmt.findBindName("SetInt64", param), value)
+}
+
+// SetBool binds a value (as a 0 or 1) to a parameter using a column name.
+func (stmt *Stmt) SetBool(param string, value bool) {
+	stmt.BindBool(stmt.findBindName("SetBool", param), value)
+}
+
+// SetBytes binds bytes to a parameter using a column name.
+// An invalid parameter name will cause the call to Step to return an error.
+func (stmt *Stmt) SetBytes(param string, value []byte) {
+	stmt.BindBytes(stmt.findBindName("SetBytes", param), value)
+}
+
+// SetText binds text to a parameter using a column name.
+// An invalid parameter name will cause the call to Step to return an error.
+func (stmt *Stmt) SetText(param string, value string) {
+	stmt.BindText(stmt.findBindName("SetText", param), value)
+}
+
+// SetFloat binds a float64 to a parameter using a column name.
+// An invalid parameter name will cause the call to Step to return an error.
+func (stmt *Stmt) SetFloat(param string, value float64) {
+	stmt.BindFloat(stmt.findBindName("SetFloat", param), value)
+}
+
+// SetNull binds a null to a parameter using a column name.
+// An invalid parameter name will cause the call to Step to return an error.
+func (stmt *Stmt) SetNull(param string) {
+	stmt.BindNull(stmt.findBindName("SetNull", param))
+}
+
+// SetZeroBlob binds a zero blob of length len to a parameter using a column name.
+// An invalid parameter name will cause the call to Step to return an error.
+func (stmt *Stmt) SetZeroBlob(param string, len int64) {
+	stmt.BindZeroBlob(stmt.findBindName("SetZeroBlob", param), len)
+}
+
+// ColumnInt returns a query result value as an int.
+//
+// Note: this method calls sqlite3_column_int64 and then converts the
+// resulting 64-bits to an int.
+//
+// Column indices start at 0.
+//
+// https://www.sqlite.org/c3ref/column_blob.html
+func (stmt *Stmt) ColumnInt(col int) int {
+	return int(stmt.ColumnInt64(col))
+}
+
+// ColumnInt32 returns a query result value as an int32.
+//
+// Column indices start at 0.
+//
+// https://www.sqlite.org/c3ref/column_blob.html
+func (stmt *Stmt) ColumnInt32(col int) int32 {
+	return lib.Xsqlite3_column_int(stmt.conn.tls, stmt.stmt, int32(col))
+}
+
+// ColumnInt64 returns a query result value as an int64.
+//
+// Column indices start at 0.
+//
+// https://www.sqlite.org/c3ref/column_blob.html
+func (stmt *Stmt) ColumnInt64(col int) int64 {
+	return lib.Xsqlite3_column_int64(stmt.conn.tls, stmt.stmt, int32(col))
+}
+
+// ColumnBytes reads a query result into buf.
+// It reports the number of bytes read.
+//
+// Column indices start at 0.
+//
+// https://www.sqlite.org/c3ref/column_blob.html
+func (stmt *Stmt) ColumnBytes(col int, buf []byte) int {
+	return copy(buf, stmt.columnBytes(col))
+}
+
+// ColumnReader creates a byte reader for a query result column.
+//
+// The reader directly references C-managed memory that stops
+// being valid as soon as the statement row resets.
+func (stmt *Stmt) ColumnReader(col int) *bytes.Reader {
+	// Load the C memory directly into the Reader.
+	// There is no exported method that lets it escape.
+	return bytes.NewReader(stmt.columnBytes(col))
+}
+
+func (stmt *Stmt) columnBytes(col int) []byte {
+	p := lib.Xsqlite3_column_blob(stmt.conn.tls, stmt.stmt, int32(col))
+	if p == 0 {
+		return nil
+	}
+	n := stmt.ColumnLen(col)
+
+	slice := reflect.SliceHeader{
+		Data: p,
+		Len:  n,
+		Cap:  n,
+	}
+	return *(*[]byte)(unsafe.Pointer(&slice))
+}
+
+// ColumnType are codes for each of the SQLite fundamental datatypes:
+//
+//   64-bit signed integer
+//   64-bit IEEE floating point number
+//   string
+//   BLOB
+//   NULL
+//
+// https://www.sqlite.org/c3ref/c_blob.html
+type ColumnType int
+
+// Data types.
+const (
+	Integer ColumnType = lib.SQLITE_INTEGER
+	Float   ColumnType = lib.SQLITE_FLOAT
+	Text    ColumnType = lib.SQLITE_TEXT
+	Blob    ColumnType = lib.SQLITE_BLOB
+	Null    ColumnType = lib.SQLITE_NULL
+)
+
+// String returns the SQLite constant name of the type.
+func (t ColumnType) String() string {
+	switch t {
+	case Integer:
+		return "SQLITE_INTEGER"
+	case Float:
+		return "SQLITE_FLOAT"
+	case Text:
+		return "SQLITE_TEXT"
+	case Blob:
+		return "SQLITE_BLOB"
+	case Null:
+		return "SQLITE_NULL"
+	default:
+		return "<unknown sqlite datatype>"
+	}
+}
+
+// ColumnType returns the datatype code for the initial data
+// type of the result column. The returned value is one of:
+//
+//   SQLITE_INTEGER
+//   SQLITE_FLOAT
+//   SQLITE_TEXT
+//   SQLITE_BLOB
+//   SQLITE_NULL
+//
+// Column indices start at 0.
+//
+// https://www.sqlite.org/c3ref/column_blob.html
+func (stmt *Stmt) ColumnType(col int) ColumnType {
+	return ColumnType(lib.Xsqlite3_column_type(stmt.conn.tls, stmt.stmt, int32(col)))
 }
 
 // ColumnText returns a query result as a string.
@@ -183,8 +861,16 @@ func (stmt *Stmt) step() (bool, error) {
 // https://www.sqlite.org/c3ref/column_blob.html
 func (stmt *Stmt) ColumnText(col int) string {
 	n := stmt.ColumnLen(col)
-	cstr := lib.Xsqlite3_column_text(stmt.conn.tls, stmt.stmt, int32(col))
-	return goStringN(cstr, n)
+	return goStringN(lib.Xsqlite3_column_text(stmt.conn.tls, stmt.stmt, int32(col)), n)
+}
+
+// ColumnFloat returns a query result as a float64.
+//
+// Column indices start at 0.
+//
+// https://www.sqlite.org/c3ref/column_blob.html
+func (stmt *Stmt) ColumnFloat(col int) float64 {
+	return lib.Xsqlite3_column_double(stmt.conn.tls, stmt.stmt, int32(col))
 }
 
 // ColumnLen returns the number of bytes in a query result.
@@ -194,6 +880,83 @@ func (stmt *Stmt) ColumnText(col int) string {
 // https://www.sqlite.org/c3ref/column_blob.html
 func (stmt *Stmt) ColumnLen(col int) int {
 	return int(lib.Xsqlite3_column_bytes(stmt.conn.tls, stmt.stmt, int32(col)))
+}
+
+func (stmt *Stmt) ColumnDatabaseName(col int) string {
+	return libc.GoString(lib.Xsqlite3_column_database_name(stmt.conn.tls, stmt.stmt, int32(col)))
+}
+
+func (stmt *Stmt) ColumnTableName(col int) string {
+	return libc.GoString(lib.Xsqlite3_column_table_name(stmt.conn.tls, stmt.stmt, int32(col)))
+}
+
+// ColumnIndex returns the index of the column with the given name.
+//
+// If there is no column with the given name ColumnIndex returns -1.
+func (stmt *Stmt) ColumnIndex(colName string) int {
+	col, found := stmt.colNames[colName]
+	if !found {
+		return -1
+	}
+	return col
+}
+
+// GetInt64 returns a query result value for colName as an int64.
+func (stmt *Stmt) GetInt64(colName string) int64 {
+	col, found := stmt.colNames[colName]
+	if !found {
+		return 0
+	}
+	return stmt.ColumnInt64(col)
+}
+
+// GetBytes reads a query result for colName into buf.
+// It reports the number of bytes read.
+func (stmt *Stmt) GetBytes(colName string, buf []byte) int {
+	col, found := stmt.colNames[colName]
+	if !found {
+		return 0
+	}
+	return stmt.ColumnBytes(col, buf)
+}
+
+// GetReader creates a byte reader for colName.
+//
+// The reader directly references C-managed memory that stops
+// being valid as soon as the statement row resets.
+func (stmt *Stmt) GetReader(colName string) *bytes.Reader {
+	col, found := stmt.colNames[colName]
+	if !found {
+		return bytes.NewReader(nil)
+	}
+	return stmt.ColumnReader(col)
+}
+
+// GetText returns a query result value for colName as a string.
+func (stmt *Stmt) GetText(colName string) string {
+	col, found := stmt.colNames[colName]
+	if !found {
+		return ""
+	}
+	return stmt.ColumnText(col)
+}
+
+// GetFloat returns a query result value for colName as a float64.
+func (stmt *Stmt) GetFloat(colName string) float64 {
+	col, found := stmt.colNames[colName]
+	if !found {
+		return 0
+	}
+	return stmt.ColumnFloat(col)
+}
+
+// GetLen returns the number of bytes in a query result for colName.
+func (stmt *Stmt) GetLen(colName string) int {
+	col, found := stmt.colNames[colName]
+	if !found {
+		return 0
+	}
+	return stmt.ColumnLen(col)
 }
 
 func malloc(tls *libc.TLS, n types.Size_t) (uintptr, error) {

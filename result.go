@@ -334,14 +334,21 @@ type sqliteError struct {
 	code ResultCode
 }
 
+func reserr(res ResultCode) error {
+	if res.IsSuccess() {
+		return nil
+	}
+	return sqliteError{res}
+}
+
 func (e sqliteError) Error() string {
 	return e.code.Message()
 }
 
-// ErrorCode returns the error's SQLite error code or ResultError if the error
+// ErrCode returns the error's SQLite error code or ResultError if the error
 // does not represent a SQLite error. ErrorCode returns ResultOK if and only if
 // the error is nil.
-func ErrorCode(err error) ResultCode {
+func ErrCode(err error) ResultCode {
 	if err == nil {
 		return ResultOK
 	}
