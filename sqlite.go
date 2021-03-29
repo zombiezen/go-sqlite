@@ -36,6 +36,7 @@ import (
 type Conn struct {
 	tls    *libc.TLS
 	conn   uintptr
+	stmts  map[string]*Stmt // query -> prepared statement
 	closed bool
 
 	cancelCh   chan struct{}
@@ -119,8 +120,10 @@ func openConn(path string, openFlags OpenFlags) (_ *Conn, err error) {
 	defer libc.Xfree(tls, connPtr)
 	res := ResultCode(lib.Xsqlite3_open_v2(tls, cpath, connPtr, int32(openFlags), 0))
 	c := &Conn{
-		tls:  tls,
-		conn: *(*uintptr)(unsafe.Pointer(connPtr)),
+		tls:        tls,
+		conn:       *(*uintptr)(unsafe.Pointer(connPtr)),
+		stmts:      make(map[string]*Stmt),
+		unlockNote: unlockNote,
 	}
 	if c.conn == 0 {
 		// Not enough memory to allocate the sqlite3 object.
@@ -144,9 +147,9 @@ func openConn(path string, openFlags OpenFlags) (_ *Conn, err error) {
 func (c *Conn) Close() error {
 	c.cancelInterrupt()
 	c.closed = true
-	// for _, stmt := range c.stmts {
-	// 	stmt.Finalize()
-	// }
+	for _, stmt := range c.stmts {
+		stmt.Finalize()
+	}
 	res := ResultCode(lib.Xsqlite3_close(c.tls, c.conn))
 	libc.Xfree(c.tls, c.unlockNote)
 	c.unlockNote = 0
@@ -183,11 +186,11 @@ func (conn *Conn) SetInterrupt(doneCh <-chan struct{}) (oldDoneCh <-chan struct{
 	oldDoneCh = conn.doneCh
 	conn.cancelInterrupt()
 	conn.doneCh = doneCh
-	// for _, stmt := range conn.stmts {
-	// 	if stmt.lastHasRow {
-	// 		stmt.Reset()
-	// 	}
-	// }
+	for _, stmt := range conn.stmts {
+		if stmt.lastHasRow {
+			stmt.Reset()
+		}
+	}
 	if doneCh == nil {
 		return oldDoneCh
 	}
@@ -234,6 +237,63 @@ func (c *Conn) cancelInterrupt() {
 	}
 }
 
+// Prep returns a persistent SQL statement.
+//
+// Any error in preparation will panic.
+//
+// Persistent prepared statements are cached by the query
+// string in a Conn. If Finalize is not called, then subsequent
+// calls to Prepare will return the same statement.
+//
+// https://www.sqlite.org/c3ref/prepare.html
+func (conn *Conn) Prep(query string) *Stmt {
+	stmt, err := conn.Prepare(query)
+	if err != nil {
+		if ErrCode(err) == ResultInterrupt {
+			return &Stmt{
+				conn:          conn,
+				query:         query,
+				colNames:      make(map[string]int),
+				prepInterrupt: true,
+			}
+		}
+		panic(err)
+	}
+	return stmt
+}
+
+// Prepare prepares a persistent SQL statement.
+//
+// Persistent prepared statements are cached by the query
+// string in a Conn. If Finalize is not called, then subsequent
+// calls to Prepare will return the same statement.
+//
+// If the query has any unprocessed trailing bytes, Prepare
+// returns an error.
+//
+// https://www.sqlite.org/c3ref/prepare.html
+func (conn *Conn) Prepare(query string) (*Stmt, error) {
+	if stmt := conn.stmts[query]; stmt != nil {
+		if err := stmt.Reset(); err != nil {
+			return nil, err
+		}
+		if err := stmt.ClearBindings(); err != nil {
+			return nil, err
+		}
+		return stmt, nil
+	}
+	stmt, trailingBytes, err := conn.prepare(query, lib.SQLITE_PREPARE_PERSISTENT)
+	if err != nil {
+		return nil, fmt.Errorf("sqlite: prepare %q: %w", query, err)
+	}
+	if trailingBytes != 0 {
+		stmt.Finalize()
+		return nil, fmt.Errorf("sqlite: prepare %q: statement has trailing bytes", query)
+	}
+	conn.stmts[query] = stmt
+	return stmt, nil
+}
+
 // PrepareTransient prepares an SQL statement that is not cached by
 // the Conn. Subsequent calls with the same query will create new Stmts.
 // Finalize must be called by the caller once done with the Stmt.
@@ -245,6 +305,14 @@ func (c *Conn) cancelInterrupt() {
 //
 // https://www.sqlite.org/c3ref/prepare.html
 func (c *Conn) PrepareTransient(query string) (stmt *Stmt, trailingBytes int, err error) {
+	// TODO(soon)
+	// if stmt != nil {
+	// 	runtime.SetFinalizer(stmt, func(stmt *Stmt) {
+	// 		if stmt.conn != nil {
+	// 			panic("open *sqlite.Stmt \"" + query + "\" garbage collected, call Finalize")
+	// 		}
+	// 	})
+	// }
 	return c.prepare(query, 0)
 }
 
@@ -338,7 +406,6 @@ type Stmt struct {
 	stmt          uintptr
 	query         string
 	bindNames     []string
-	colCount      int
 	colNames      map[string]int
 	bindErr       error
 	prepInterrupt bool // set if Prep was interrupted
@@ -362,9 +429,9 @@ func (stmt *Stmt) interrupted() error {
 //
 // https://www.sqlite.org/c3ref/finalize.html
 func (stmt *Stmt) Finalize() error {
-	// if ptr := stmt.conn.stmts[stmt.query]; ptr == stmt {
-	// 	delete(stmt.conn.stmts, stmt.query)
-	// }
+	if ptr := stmt.conn.stmts[stmt.query]; ptr == stmt {
+		delete(stmt.conn.stmts, stmt.query)
+	}
 	res := ResultCode(lib.Xsqlite3_finalize(stmt.conn.tls, stmt.stmt))
 	stmt.conn = nil
 	if err := reserr(res); err != nil {
@@ -601,6 +668,9 @@ func (stmt *Stmt) BindBytes(param int, value []byte) {
 		}
 		return
 	}
+	for i, b := range value {
+		*(*byte)(unsafe.Pointer(v + uintptr(i))) = b
+	}
 	res := ResultCode(lib.Xsqlite3_bind_blob(stmt.conn.tls, stmt.stmt, int32(param), v, int32(len(value)), freeFuncPtr))
 	stmt.handleBindErr("bind bytes", res)
 }
@@ -639,6 +709,9 @@ func (stmt *Stmt) BindText(param int, value string) {
 			stmt.bindErr = fmt.Errorf("bind text: %w", err)
 		}
 		return
+	}
+	for i := 0; i < len(value); i++ {
+		*(*byte)(unsafe.Pointer(v + uintptr(i))) = value[i]
 	}
 	res := ResultCode(lib.Xsqlite3_bind_text(stmt.conn.tls, stmt.stmt, int32(param), v, int32(len(value)), freeFuncPtr))
 	stmt.handleBindErr("bind text", res)
