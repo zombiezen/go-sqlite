@@ -20,7 +20,6 @@ package sqlite
 import (
 	"bytes"
 	"fmt"
-	"reflect"
 	"strings"
 	"time"
 	"unsafe"
@@ -869,13 +868,7 @@ func (stmt *Stmt) columnBytes(col int) []byte {
 		return nil
 	}
 	n := stmt.ColumnLen(col)
-
-	slice := reflect.SliceHeader{
-		Data: p,
-		Len:  n,
-		Cap:  n,
-	}
-	return *(*[]byte)(unsafe.Pointer(&slice))
+	return libc.GoBytes(p, n)
 }
 
 // ColumnType are codes for each of the SQLite fundamental datatypes:
