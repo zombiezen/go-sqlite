@@ -160,6 +160,23 @@ func (c *Conn) Close() error {
 	return nil
 }
 
+// AutocommitEnabled reports whether conn is in autocommit mode.
+// https://sqlite.org/c3ref/get_autocommit.html
+func (conn *Conn) AutocommitEnabled() bool {
+	return lib.Xsqlite3_get_autocommit(conn.tls, conn.conn) != 0
+}
+
+// CheckReset reports whether any statement on this connection is in the process
+// of returning results.
+func (conn *Conn) CheckReset() string {
+	for _, stmt := range conn.stmts {
+		if stmt.lastHasRow {
+			return stmt.query
+		}
+	}
+	return ""
+}
+
 // SetInterrupt assigns a channel to control connection execution lifetime.
 //
 // When doneCh is closed, the connection uses sqlite3_interrupt to

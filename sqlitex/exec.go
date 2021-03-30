@@ -179,8 +179,7 @@ func annotateErr(err error) error {
 // The script is wrapped in a SAVEPOINT transaction,
 // which is rolled back on any error.
 func ExecScript(conn *sqlite.Conn, queries string) (err error) {
-	// TODO(soon)
-	// defer Save(conn)(&err)
+	defer Save(conn)(&err)
 
 	for {
 		queries = strings.TrimSpace(queries)
