@@ -78,7 +78,7 @@ func TestBlob(t *testing.T) {
 		t.Fatal(err)
 	}
 	if n != 3 {
-		t.Fatalf("b.WriteAt n=%d, want 3", n)
+		t.Fatalf("b.Write n=%d, want 3", n)
 	}
 	if _, err := b.Seek(1, io.SeekStart); err != nil {
 		t.Fatal(err)
@@ -88,7 +88,7 @@ func TestBlob(t *testing.T) {
 		t.Fatal(err)
 	}
 	if n != 4 {
-		t.Fatalf("b.WriteAt n=%d, want 4", n)
+		t.Fatalf("b.Write n=%d, want 4", n)
 	}
 	if size := b.Size(); size != 5 {
 		t.Fatalf("b.Size=%d, want 5", size)
@@ -98,7 +98,7 @@ func TestBlob(t *testing.T) {
 	}
 	n, err = b.Write([]byte{2, 3, 4, 5, 6}) // too long
 	if err == nil {
-		t.Fatalf("WriteAt too long, but no error")
+		t.Fatalf("Write too long, but no error")
 	}
 	if err := b.Close(); err != nil {
 		t.Error(err)
@@ -264,7 +264,7 @@ func TestConcurrentBlobWrites(t *testing.T) {
 				}
 				n, err := blob.Write(b)
 				if err != nil {
-					t.Errorf("Blob.WriteAt: %v (i=%d, j=%d)", err, i, j)
+					t.Errorf("Blob.Write: %v (i=%d, j=%d)", err, i, j)
 					return
 				}
 				if n != len(b) {

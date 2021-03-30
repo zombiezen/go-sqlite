@@ -21,14 +21,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"runtime"
 	"unsafe"
 
-	// The pointer operations for Read and Write assume a non-moving GC.
-	_ "go4.org/unsafe/assume-no-moving-gc"
 	"modernc.org/libc"
 	lib "modernc.org/sqlite/lib"
 )
+
+const blobBufSize = 4096
 
 var (
 	mainCString = mustCString("main")
@@ -39,6 +38,10 @@ var (
 //
 // https://www.sqlite.org/c3ref/blob_open.html
 func (conn *Conn) OpenBlob(dbn, table, column string, row int64, write bool) (*Blob, error) {
+	return conn.openBlob(dbn, table, column, row, write)
+}
+
+func (conn *Conn) openBlob(dbn, table, column string, row int64, write bool) (_ *Blob, err error) {
 	var cdb uintptr
 	switch dbn {
 	case "", "main":
@@ -57,6 +60,15 @@ func (conn *Conn) OpenBlob(dbn, table, column string, row int64, write bool) (*B
 	if write {
 		writeFlag = 1
 	}
+	buf, err := malloc(conn.tls, blobBufSize)
+	if err != nil {
+		return nil, fmt.Errorf("sqlite: open blob %q.%q blob: %w", table, column, err)
+	}
+	defer func() {
+		if err != nil {
+			libc.Xfree(conn.tls, buf)
+		}
+	}()
 
 	ctable, err := libc.CString(table)
 	if err != nil {
@@ -99,6 +111,7 @@ func (conn *Conn) OpenBlob(dbn, table, column string, row int64, write bool) (*B
 			return &Blob{
 				conn: conn,
 				blob: blobPtr,
+				buf:  buf,
 				size: lib.Xsqlite3_blob_bytes(conn.tls, blobPtr),
 			}, nil
 		default:
@@ -111,13 +124,14 @@ func (conn *Conn) OpenBlob(dbn, table, column string, row int64, write bool) (*B
 type Blob struct {
 	conn *Conn
 	blob uintptr
+	buf  uintptr
 	off  int32
 	size int32
 }
 
 // Read reads up to len(p) bytes from the blob into p.
 // https://www.sqlite.org/c3ref/blob_read.html
-func (blob *Blob) Read(p []byte) (n int, err error) {
+func (blob *Blob) Read(p []byte) (int, error) {
 	if blob.blob == 0 {
 		return 0, fmt.Errorf("sqlite: read blob: %w", errInvalidBlob)
 	}
@@ -130,33 +144,43 @@ func (blob *Blob) Read(p []byte) (n int, err error) {
 	if rem := blob.size - blob.off; len(p) > int(rem) {
 		p = p[:rem]
 	}
-	// TODO(someday): Avoid using actually unsafe pointer operation.
-	res := ResultCode(lib.Xsqlite3_blob_read(blob.conn.tls, blob.blob, uintptr(unsafe.Pointer(&p[0])), int32(len(p)), blob.off))
-	runtime.KeepAlive(p)
-	if err := reserr(res); err != nil {
-		return 0, fmt.Errorf("sqlite: read blob: %w", err)
+	fullLen := len(p)
+	for len(p) > 0 {
+		nn := int32(blobBufSize)
+		if int(nn) > len(p) {
+			nn = int32(len(p))
+		}
+		res := ResultCode(lib.Xsqlite3_blob_read(blob.conn.tls, blob.blob, blob.buf, nn, blob.off))
+		if err := reserr(res); err != nil {
+			return fullLen - len(p), fmt.Errorf("sqlite: read blob: %w", err)
+		}
+		copy(p, libc.GoBytes(blob.buf, int(nn)))
+		p = p[nn:]
+		blob.off += nn
 	}
-	blob.off += int32(len(p))
-	return len(p), nil
+	return fullLen, nil
 }
 
 // Write writes len(p) from p to the blob.
 // https://www.sqlite.org/c3ref/blob_write.html
-func (blob *Blob) Write(p []byte) (n int, err error) {
+func (blob *Blob) Write(p []byte) (int, error) {
 	if blob.blob == 0 {
 		return 0, fmt.Errorf("sqlite: write blob: %w", errInvalidBlob)
 	}
 	if err := blob.conn.interrupted(); err != nil {
 		return 0, fmt.Errorf("sqlite: write blob: %w", err)
 	}
-	// TODO(someday): Avoid using actually unsafe pointer operation.
-	res := ResultCode(lib.Xsqlite3_blob_write(blob.conn.tls, blob.blob, uintptr(unsafe.Pointer(&p[0])), int32(len(p)), blob.off))
-	runtime.KeepAlive(p)
-	if err := reserr(res); err != nil {
-		return 0, fmt.Errorf("sqlite: write blob: %w", err)
+	fullLen := len(p)
+	for len(p) > 0 {
+		nn := copy(libc.GoBytes(blob.buf, blobBufSize), p)
+		res := ResultCode(lib.Xsqlite3_blob_write(blob.conn.tls, blob.blob, blob.buf, int32(nn), blob.off))
+		if err := reserr(res); err != nil {
+			return fullLen - len(p), fmt.Errorf("sqlite: write blob: %w", err)
+		}
+		p = p[nn:]
+		blob.off += int32(nn)
 	}
-	blob.off += int32(len(p))
-	return len(p), nil
+	return fullLen, nil
 }
 
 // Seek sets the offset for the next Read or Write and returns the offset.
@@ -193,6 +217,8 @@ func (blob *Blob) Close() error {
 	if blob.blob == 0 {
 		return errInvalidBlob
 	}
+	libc.Xfree(blob.conn.tls, blob.buf)
+	blob.buf = 0
 	res := ResultCode(lib.Xsqlite3_blob_close(blob.conn.tls, blob.blob))
 	blob.blob = 0
 	if err := reserr(res); err != nil {
