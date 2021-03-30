@@ -645,6 +645,10 @@ func (stmt *Stmt) BindBool(param int, value bool) {
 	stmt.handleBindErr("bind bool", res)
 }
 
+var emptyCString = mustCString("")
+
+const sqliteStatic uintptr = 0
+
 // BindBytes binds value to a numbered stmt parameter.
 //
 // In-memory copies of value are made using this interface.
@@ -657,11 +661,12 @@ func (stmt *Stmt) BindBytes(param int, value []byte) {
 	if stmt.stmt == 0 {
 		return
 	}
-	allocSize := types.Size_t(len(value))
-	if allocSize == 0 {
-		allocSize = 1
+	if len(value) == 0 {
+		res := ResultCode(lib.Xsqlite3_bind_blob(stmt.conn.tls, stmt.stmt, int32(param), emptyCString, 0, sqliteStatic))
+		stmt.handleBindErr("bind bytes", res)
+		return
 	}
-	v, err := malloc(stmt.conn.tls, allocSize)
+	v, err := malloc(stmt.conn.tls, types.Size_t(len(value)))
 	if err != nil {
 		if stmt.bindErr == nil {
 			stmt.bindErr = fmt.Errorf("bind bytes: %w", err)
@@ -886,25 +891,25 @@ type ColumnType int
 
 // Data types.
 const (
-	Integer ColumnType = lib.SQLITE_INTEGER
-	Float   ColumnType = lib.SQLITE_FLOAT
-	Text    ColumnType = lib.SQLITE_TEXT
-	Blob    ColumnType = lib.SQLITE_BLOB
-	Null    ColumnType = lib.SQLITE_NULL
+	TypeInteger ColumnType = lib.SQLITE_INTEGER
+	TypeFloat   ColumnType = lib.SQLITE_FLOAT
+	TypeText    ColumnType = lib.SQLITE_TEXT
+	TypeBlob    ColumnType = lib.SQLITE_BLOB
+	TypeNull    ColumnType = lib.SQLITE_NULL
 )
 
 // String returns the SQLite constant name of the type.
 func (t ColumnType) String() string {
 	switch t {
-	case Integer:
+	case TypeInteger:
 		return "SQLITE_INTEGER"
-	case Float:
+	case TypeFloat:
 		return "SQLITE_FLOAT"
-	case Text:
+	case TypeText:
 		return "SQLITE_TEXT"
-	case Blob:
+	case TypeBlob:
 		return "SQLITE_BLOB"
-	case Null:
+	case TypeNull:
 		return "SQLITE_NULL"
 	default:
 		return "<unknown sqlite datatype>"
@@ -1038,6 +1043,14 @@ func malloc(tls *libc.TLS, n types.Size_t) (uintptr, error) {
 		return 0, fmt.Errorf("out of memory")
 	}
 	return p, nil
+}
+
+func mustCString(s string) uintptr {
+	p, err := libc.CString(s)
+	if err != nil {
+		panic(err)
+	}
+	return p
 }
 
 func goStringN(s uintptr, n int) string {

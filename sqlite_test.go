@@ -18,6 +18,7 @@
 package sqlite_test
 
 import (
+	"bytes"
 	"context"
 	"io/ioutil"
 	"os"
@@ -103,12 +104,12 @@ func TestConn(t *testing.T) {
 			t.Errorf(`GetText("foo2")=%q, want %q`, getIntVal, intVal)
 		}
 		typ := stmt.ColumnType(0)
-		if typ != sqlite.Text {
-			t.Errorf(`ColumnType(0)=%q, want %q`, typ, sqlite.Text)
+		if typ != sqlite.TypeText {
+			t.Errorf(`ColumnType(0)=%q, want %q`, typ, sqlite.TypeText)
 		}
 		intTyp := stmt.ColumnType(1)
-		if intTyp != sqlite.Integer {
-			t.Errorf(`ColumnType(1)=%q, want %q`, intTyp, sqlite.Integer)
+		if intTyp != sqlite.TypeInteger {
+			t.Errorf(`ColumnType(1)=%q, want %q`, intTyp, sqlite.TypeInteger)
 		}
 		gotVals = append(gotVals, val)
 		gotInts = append(gotInts, intVal)
@@ -369,73 +370,71 @@ func TestParallel(t *testing.T) {
 	}
 }
 
-// TODO(soon)
-// func TestBindBytes(t *testing.T) {
-// 	c, err := sqlite.OpenConn(":memory:", 0)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	defer func() {
-// 		if err := c.Close(); err != nil {
-// 			t.Error(err)
-// 		}
-// 	}()
+func TestBindBytes(t *testing.T) {
+	c, err := sqlite.OpenConn(":memory:", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := c.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
 
-// 	val := make([]byte, 32)
-// 	copy(val[5:], []byte("hello world"))
+	val := make([]byte, 32)
+	copy(val[5:], []byte("hello world"))
 
-// 	stmt := c.Prep("CREATE TABLE IF NOT EXISTS bindbytes (c);")
-// 	if _, err := stmt.Step(); err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	stmt = c.Prep("INSERT INTO bindbytes (c) VALUES ($bytes);")
-// 	stmt.SetBytes("$bytes", val)
-// 	if _, err := stmt.Step(); err != nil {
-// 		t.Fatal(err)
-// 	}
+	stmt := c.Prep("CREATE TABLE IF NOT EXISTS bindbytes (c);")
+	if _, err := stmt.Step(); err != nil {
+		t.Fatal(err)
+	}
+	stmt = c.Prep("INSERT INTO bindbytes (c) VALUES ($bytes);")
+	stmt.SetBytes("$bytes", val)
+	if _, err := stmt.Step(); err != nil {
+		t.Fatal(err)
+	}
 
-// 	stmt = c.Prep("SELECT count(*) FROM bindbytes WHERE c = $bytes;")
-// 	stmt.SetBytes("$bytes", val)
-// 	if hasRow, err := stmt.Step(); err != nil {
-// 		t.Fatal(err)
-// 	} else if !hasRow {
-// 		t.Error("SetBytes: result has no row")
-// 	}
-// 	if got := stmt.ColumnInt(0); got != 1 {
-// 		t.Errorf("SetBytes: count is %d, want 1", got)
-// 	}
+	stmt = c.Prep("SELECT count(*) FROM bindbytes WHERE c = $bytes;")
+	stmt.SetBytes("$bytes", val)
+	if hasRow, err := stmt.Step(); err != nil {
+		t.Fatal(err)
+	} else if !hasRow {
+		t.Error("SetBytes: result has no row")
+	}
+	if got := stmt.ColumnInt(0); got != 1 {
+		t.Errorf("SetBytes: count is %d, want 1", got)
+	}
 
-// 	stmt.Reset()
+	stmt.Reset()
 
-// 	stmt.SetBytes("$bytes", val)
-// 	if hasRow, err := stmt.Step(); err != nil {
-// 		t.Fatal(err)
-// 	} else if !hasRow {
-// 		t.Error("SetBytes: result has no row")
-// 	}
-// 	if got := stmt.ColumnInt(0); got != 1 {
-// 		t.Errorf("SetBytes: count is %d, want 1", got)
-// 	}
+	stmt.SetBytes("$bytes", val)
+	if hasRow, err := stmt.Step(); err != nil {
+		t.Fatal(err)
+	} else if !hasRow {
+		t.Error("SetBytes: result has no row")
+	}
+	if got := stmt.ColumnInt(0); got != 1 {
+		t.Errorf("SetBytes: count is %d, want 1", got)
+	}
 
-// 	blob, err := c.OpenBlob("", "bindbytes", "c", 1, false)
-// 	if err != nil {
-// 		t.Fatalf("SetBytes: OpenBlob: %v", err)
-// 	}
-// 	defer func() {
-// 		if err := blob.Close(); err != nil {
-// 			t.Error(err)
-// 		}
-// 	}()
+	blob, err := c.OpenBlob("", "bindbytes", "c", 1, false)
+	if err != nil {
+		t.Fatalf("SetBytes: OpenBlob: %v", err)
+	}
+	defer func() {
+		if err := blob.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
 
-// 	storedVal := make([]byte, 40)
-// 	n, err := blob.Read(storedVal)
-// 	if err != nil {
-// 		t.Fatalf("SetBytes: Read: %v", err)
-// 	}
-// 	if !bytes.Equal(val, storedVal[:n]) {
-// 		t.Fatalf("SetBytes: want: %x, got: %x", val, storedVal)
-// 	}
-// }
+	storedVal, err := ioutil.ReadAll(blob)
+	if err != nil {
+		t.Fatalf("SetBytes: Read: %v", err)
+	}
+	if !bytes.Equal(val, storedVal) {
+		t.Fatalf("SetBytes: want: %x, got: %x", val, storedVal)
+	}
+}
 
 func TestBindText(t *testing.T) {
 	c, err := sqlite.OpenConn(":memory:", 0)
@@ -612,6 +611,8 @@ func TestJournalMode(t *testing.T) {
 }
 
 func TestBusyTimeout(t *testing.T) {
+	t.Skip("TODO(soon)")
+
 	dir, err := ioutil.TempDir("", "crawshaw.io")
 	if err != nil {
 		t.Fatal(err)
