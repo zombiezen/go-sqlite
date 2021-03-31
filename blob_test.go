@@ -134,8 +134,6 @@ func TestBlob(t *testing.T) {
 }
 
 func TestConcurrentBlobSpins(t *testing.T) {
-	t.Skip("TODO(soon)")
-
 	flags := sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenURI | sqlite.OpenNoMutex | sqlite.OpenSharedCache
 	c, err := sqlite.OpenConn("file::memory:?mode=memory", flags)
 	if err != nil {
@@ -177,17 +175,19 @@ func TestConcurrentBlobSpins(t *testing.T) {
 		t.Errorf("OpenBlob: %v", err)
 		return
 	}
+	blob1Closed := make(chan struct{})
 	go func() {
+		defer close(blob1Closed)
 		time.Sleep(50 * time.Millisecond)
 		blob1.Close()
 	}()
+	defer func() { <-blob1Closed }()
 
 	// countBefore := sqlite.ConnCount(c2)
 	blob2, err := c2.OpenBlob("", "blobs", "col", blobRow2, true)
 	// countAfter := sqlite.ConnCount(c2)
 	if err != nil {
-		t.Errorf("OpenBlob: %v", err)
-		return
+		t.Fatalf("OpenBlob: %v", err)
 	}
 	blob2.Close()
 
@@ -200,8 +200,6 @@ func TestConcurrentBlobSpins(t *testing.T) {
 // TestConcurrentBlobWrites looks for unexpected SQLITE_LOCKED errors
 // when using the (default) shared cache.
 func TestConcurrentBlobWrites(t *testing.T) {
-	t.Skip("TODO(soon)")
-
 	flags := sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenURI | sqlite.OpenNoMutex | sqlite.OpenSharedCache
 
 	const numBlobs = 5

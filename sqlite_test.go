@@ -611,8 +611,6 @@ func TestJournalMode(t *testing.T) {
 }
 
 func TestBusyTimeout(t *testing.T) {
-	t.Skip("TODO(soon)")
-
 	dir, err := ioutil.TempDir("", "crawshaw.io")
 	if err != nil {
 		t.Fatal(err)

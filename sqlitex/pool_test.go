@@ -47,8 +47,6 @@ func newMemPool(t *testing.T) *sqlitex.Pool {
 }
 
 func TestPool(t *testing.T) {
-	t.Skip("TODO(soon): Data race")
-
 	dbpool := newMemPool(t)
 	defer func() {
 		if err := dbpool.Close(); err != nil {
@@ -139,8 +137,6 @@ func TestPoolAfterClose(t *testing.T) {
 }
 
 func TestSharedCacheLock(t *testing.T) {
-	t.Skip("TODO(soon): Data race")
-
 	dir, err := ioutil.TempDir("", "sqlite-test-")
 	if err != nil {
 		t.Fatal(err)
