@@ -200,14 +200,14 @@ func (c *Conn) Close() error {
 
 // AutocommitEnabled reports whether conn is in autocommit mode.
 // https://sqlite.org/c3ref/get_autocommit.html
-func (conn *Conn) AutocommitEnabled() bool {
-	return lib.Xsqlite3_get_autocommit(conn.tls, conn.conn) != 0
+func (c *Conn) AutocommitEnabled() bool {
+	return lib.Xsqlite3_get_autocommit(c.tls, c.conn) != 0
 }
 
 // CheckReset reports whether any statement on this connection is in the process
 // of returning results.
-func (conn *Conn) CheckReset() string {
-	for _, stmt := range conn.stmts {
+func (c *Conn) CheckReset() string {
+	for _, stmt := range c.stmts {
 		if stmt.lastHasRow {
 			return stmt.query
 		}
@@ -233,14 +233,14 @@ func (conn *Conn) CheckReset() string {
 // Any busy statements at the time SetInterrupt is called will be reset.
 //
 // SetInterrupt returns the old doneCh assigned to the connection.
-func (conn *Conn) SetInterrupt(doneCh <-chan struct{}) (oldDoneCh <-chan struct{}) {
-	if conn.closed {
+func (c *Conn) SetInterrupt(doneCh <-chan struct{}) (oldDoneCh <-chan struct{}) {
+	if c.closed {
 		panic("sqlite.Conn is closed")
 	}
-	oldDoneCh = conn.doneCh
-	conn.cancelInterrupt()
-	conn.doneCh = doneCh
-	for _, stmt := range conn.stmts {
+	oldDoneCh = c.doneCh
+	c.cancelInterrupt()
+	c.doneCh = doneCh
+	for _, stmt := range c.stmts {
 		if stmt.lastHasRow {
 			stmt.Reset()
 		}
@@ -249,12 +249,12 @@ func (conn *Conn) SetInterrupt(doneCh <-chan struct{}) (oldDoneCh <-chan struct{
 		return oldDoneCh
 	}
 	cancelCh := make(chan struct{})
-	conn.cancelCh = cancelCh
+	c.cancelCh = cancelCh
 	go func() {
 		select {
 		case <-doneCh:
-			lib.Xsqlite3_interrupt(conn.tls, conn.conn)
-			fireUnlockNote(conn.tls, conn.unlockNote)
+			lib.Xsqlite3_interrupt(c.tls, c.conn)
+			fireUnlockNote(c.tls, c.unlockNote)
 			<-cancelCh
 			cancelCh <- struct{}{}
 		case <-cancelCh:
@@ -274,9 +274,9 @@ func (c *Conn) SetBusyTimeout(d time.Duration) {
 	lib.Xsqlite3_busy_timeout(c.tls, c.conn, int32(d/time.Millisecond))
 }
 
-func (conn *Conn) interrupted() error {
+func (c *Conn) interrupted() error {
 	select {
-	case <-conn.doneCh:
+	case <-c.doneCh:
 		return sqliteError{ResultInterrupt}
 	default:
 		return nil
@@ -300,12 +300,12 @@ func (c *Conn) cancelInterrupt() {
 // calls to Prepare will return the same statement.
 //
 // https://www.sqlite.org/c3ref/prepare.html
-func (conn *Conn) Prep(query string) *Stmt {
-	stmt, err := conn.Prepare(query)
+func (c *Conn) Prep(query string) *Stmt {
+	stmt, err := c.Prepare(query)
 	if err != nil {
 		if ErrCode(err) == ResultInterrupt {
 			return &Stmt{
-				conn:          conn,
+				conn:          c,
 				query:         query,
 				colNames:      make(map[string]int),
 				prepInterrupt: true,
@@ -326,8 +326,8 @@ func (conn *Conn) Prep(query string) *Stmt {
 // returns an error.
 //
 // https://www.sqlite.org/c3ref/prepare.html
-func (conn *Conn) Prepare(query string) (*Stmt, error) {
-	if stmt := conn.stmts[query]; stmt != nil {
+func (c *Conn) Prepare(query string) (*Stmt, error) {
+	if stmt := c.stmts[query]; stmt != nil {
 		if err := stmt.Reset(); err != nil {
 			return nil, err
 		}
@@ -336,7 +336,7 @@ func (conn *Conn) Prepare(query string) (*Stmt, error) {
 		}
 		return stmt, nil
 	}
-	stmt, trailingBytes, err := conn.prepare(query, lib.SQLITE_PREPARE_PERSISTENT)
+	stmt, trailingBytes, err := c.prepare(query, lib.SQLITE_PREPARE_PERSISTENT)
 	if err != nil {
 		return nil, fmt.Errorf("sqlite: prepare %q: %w", query, err)
 	}
@@ -344,7 +344,7 @@ func (conn *Conn) Prepare(query string) (*Stmt, error) {
 		stmt.Finalize()
 		return nil, fmt.Errorf("sqlite: prepare %q: statement has trailing bytes", query)
 	}
-	conn.stmts[query] = stmt
+	c.stmts[query] = stmt
 	return stmt, nil
 }
 

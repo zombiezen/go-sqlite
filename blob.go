@@ -37,11 +37,11 @@ var (
 // OpenBlob opens a blob in a particular {database,table,column,row}.
 //
 // https://www.sqlite.org/c3ref/blob_open.html
-func (conn *Conn) OpenBlob(dbn, table, column string, row int64, write bool) (*Blob, error) {
-	return conn.openBlob(dbn, table, column, row, write)
+func (c *Conn) OpenBlob(dbn, table, column string, row int64, write bool) (*Blob, error) {
+	return c.openBlob(dbn, table, column, row, write)
 }
 
-func (conn *Conn) openBlob(dbn, table, column string, row int64, write bool) (_ *Blob, err error) {
+func (c *Conn) openBlob(dbn, table, column string, row int64, write bool) (_ *Blob, err error) {
 	var cdb uintptr
 	switch dbn {
 	case "", "main":
@@ -54,19 +54,19 @@ func (conn *Conn) openBlob(dbn, table, column string, row int64, write bool) (_ 
 		if err != nil {
 			return nil, fmt.Errorf("sqlite: open blob %q.%q blob: %w", table, column, err)
 		}
-		defer libc.Xfree(conn.tls, cdb)
+		defer libc.Xfree(c.tls, cdb)
 	}
 	var writeFlag int32
 	if write {
 		writeFlag = 1
 	}
-	buf, err := malloc(conn.tls, blobBufSize)
+	buf, err := malloc(c.tls, blobBufSize)
 	if err != nil {
 		return nil, fmt.Errorf("sqlite: open blob %q.%q blob: %w", table, column, err)
 	}
 	defer func() {
 		if err != nil {
-			libc.Xfree(conn.tls, buf)
+			libc.Xfree(c.tls, buf)
 		}
 	}()
 
@@ -74,25 +74,25 @@ func (conn *Conn) openBlob(dbn, table, column string, row int64, write bool) (_ 
 	if err != nil {
 		return nil, fmt.Errorf("sqlite: open blob %q.%q blob: %w", table, column, err)
 	}
-	defer libc.Xfree(conn.tls, ctable)
+	defer libc.Xfree(c.tls, ctable)
 	ccolumn, err := libc.CString(column)
 	if err != nil {
 		return nil, fmt.Errorf("sqlite: open blob %q.%q blob: %w", table, column, err)
 	}
-	defer libc.Xfree(conn.tls, ccolumn)
+	defer libc.Xfree(c.tls, ccolumn)
 
-	blobPtrPtr, err := malloc(conn.tls, ptrSize)
+	blobPtrPtr, err := malloc(c.tls, ptrSize)
 	if err != nil {
 		return nil, fmt.Errorf("sqlite: open blob %q.%q blob: %w", table, column, err)
 	}
-	defer libc.Xfree(conn.tls, blobPtrPtr)
+	defer libc.Xfree(c.tls, blobPtrPtr)
 	for {
-		if err := conn.interrupted(); err != nil {
+		if err := c.interrupted(); err != nil {
 			return nil, fmt.Errorf("sqlite: open blob %q.%q blob: %w", table, column, err)
 		}
 		res := ResultCode(lib.Xsqlite3_blob_open(
-			conn.tls,
-			conn.conn,
+			c.tls,
+			c.conn,
 			cdb,
 			ctable,
 			ccolumn,
@@ -102,20 +102,20 @@ func (conn *Conn) openBlob(dbn, table, column string, row int64, write bool) (_ 
 		))
 		switch res {
 		case ResultLockedSharedCache:
-			if err := reserr(waitForUnlockNotify(conn.tls, conn.conn, conn.unlockNote)); err != nil {
+			if err := reserr(waitForUnlockNotify(c.tls, c.conn, c.unlockNote)); err != nil {
 				return nil, fmt.Errorf("sqlite: open %q.%q blob: %w", table, column, err)
 			}
 			// loop
 		case ResultOK:
 			blobPtr := *(*uintptr)(unsafe.Pointer(blobPtrPtr))
 			return &Blob{
-				conn: conn,
+				conn: c,
 				blob: blobPtr,
 				buf:  buf,
-				size: lib.Xsqlite3_blob_bytes(conn.tls, blobPtr),
+				size: lib.Xsqlite3_blob_bytes(c.tls, blobPtr),
 			}, nil
 		default:
-			return nil, fmt.Errorf("sqlite: open %q.%q blob: %w", table, column, conn.extreserr(res))
+			return nil, fmt.Errorf("sqlite: open %q.%q blob: %w", table, column, c.extreserr(res))
 		}
 	}
 }
