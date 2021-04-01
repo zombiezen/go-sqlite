@@ -15,16 +15,14 @@
 //
 // SPDX-License-Identifier: ISC
 
-package sqlite_test
+package sqlite
 
 import (
 	"testing"
-
-	"zombiezen.com/go/sqlite"
 )
 
 func TestFunc(t *testing.T) {
-	c, err := sqlite.OpenConn(":memory:", 0)
+	c, err := OpenConn(":memory:", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,11 +32,14 @@ func TestFunc(t *testing.T) {
 		}
 	}()
 
-	xFunc := func(ctx sqlite.Context, values ...sqlite.Value) {
-		v := values[0].Int() + values[1].Int()
-		ctx.ResultInt(v)
-	}
-	if err := c.CreateFunction("addints", true, 2, xFunc, nil, nil); err != nil {
+	err = c.CreateFunction("addints", &FunctionImpl{
+		NArgs:         2,
+		Deterministic: true,
+		Scalar: func(ctx Context, args []Value) (Value, error) {
+			return IntegerValue(args[0].Int64() + args[1].Int64()), nil
+		},
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -56,7 +57,7 @@ func TestFunc(t *testing.T) {
 }
 
 func TestAggFunc(t *testing.T) {
-	c, err := sqlite.OpenConn(":memory:", 0)
+	c, err := OpenConn(":memory:", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,6 +85,7 @@ func TestAggFunc(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer stmt.Finalize()
 	for _, val := range cVals {
 		stmt.SetInt64("$c", int64(val))
 		if _, err = stmt.Step(); err != nil {
@@ -93,24 +95,24 @@ func TestAggFunc(t *testing.T) {
 			t.Errorf("INSERT reset %q: %v", val, err)
 		}
 	}
-	stmt.Finalize()
 
-	xStep := func(ctx sqlite.Context, values ...sqlite.Value) {
-		var sum int
-		if data := ctx.UserData(); data != nil {
-			sum = data.(int)
-		}
-		sum += values[0].Int()
-		ctx.SetUserData(sum)
+	sumintsImpl := &FunctionImpl{
+		NArgs:         2,
+		Deterministic: true,
+		AllowIndirect: true,
 	}
-	xFinal := func(ctx sqlite.Context) {
-		var sum int
-		if data := ctx.UserData(); data != nil {
-			sum = data.(int)
+	{
+		var sum int64
+		sumintsImpl.AggregateStep = func(ctx Context, args []Value) {
+			sum += args[0].Int64()
 		}
-		ctx.ResultInt(sum)
+		sumintsImpl.AggregateFinal = func(ctx Context) (Value, error) {
+			result := IntegerValue(sum)
+			sum = 0
+			return result, nil
+		}
 	}
-	if err := c.CreateFunction("sumints", true, 2, nil, xStep, xFinal); err != nil {
+	if err := c.CreateFunction("sumints", sumintsImpl); err != nil {
 		t.Fatal(err)
 	}
 
@@ -118,11 +120,117 @@ func TestAggFunc(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer stmt.Finalize()
 	if _, err := stmt.Step(); err != nil {
 		t.Fatal(err)
 	}
 	if got := stmt.ColumnInt(0); got != want {
 		t.Errorf("sum(c)=%d, want %d", got, want)
 	}
-	stmt.Finalize()
+}
+
+func TestCastTextToInteger(t *testing.T) {
+	tests := []struct {
+		text string
+		want int64
+	}{
+		{
+			text: "abc",
+			want: 0,
+		},
+		{
+			text: "123",
+			want: 123,
+		},
+		{
+			text: " 123 ",
+			want: 123,
+		},
+		{
+			text: "+123",
+			want: 123,
+		},
+		{
+			text: "-123",
+			want: -123,
+		},
+		{
+			text: "123e+5",
+			want: 123,
+		},
+		{
+			text: "0x123",
+			want: 0,
+		},
+		{
+			text: "9223372036854775808",
+			want: 9223372036854775807,
+		},
+		{
+			text: "-9223372036854775809",
+			want: -9223372036854775808,
+		},
+	}
+	for _, test := range tests {
+		if got := castTextToInteger(test.text); got != test.want {
+			t.Errorf("castTextToInteger(%q) = %d; want %d", test.text, got, test.want)
+		}
+	}
+}
+
+func TestCastTextToReal(t *testing.T) {
+	tests := []struct {
+		text string
+		want float64
+	}{
+		{
+			text: "abc",
+			want: 0,
+		},
+		{
+			text: "123",
+			want: 123,
+		},
+		{
+			text: "123.45",
+			want: 123.45,
+		},
+		{
+			text: " 123.45 ",
+			want: 123.45,
+		},
+		{
+			text: "+123",
+			want: 123,
+		},
+		{
+			text: "-123",
+			want: -123,
+		},
+		{
+			text: "123e+5",
+			want: 123e+5,
+		},
+		{
+			text: "123.45xxx",
+			want: 123.45,
+		},
+		{
+			text: "0x123",
+			want: 0,
+		},
+		{
+			text: "9223372036854775808",
+			want: 9223372036854775808,
+		},
+		{
+			text: "-9223372036854775809",
+			want: -9223372036854775809,
+		},
+	}
+	for _, test := range tests {
+		if got := castTextToReal(test.text); got != test.want {
+			t.Errorf("castTextToReal(%q) = %g; want %g", test.text, got, test.want)
+		}
+	}
 }

@@ -192,6 +192,13 @@ func (c *Conn) Close() error {
 	c.unlockNote = 0
 	c.tls.Close()
 	c.tls = nil
+	xfuncs.mu.Lock()
+	for id, f := range xfuncs.m {
+		if f.conn == c {
+			delete(xfuncs.m, id)
+		}
+	}
+	xfuncs.mu.Unlock()
 	if !res.IsSuccess() {
 		return fmt.Errorf("sqlite: close: %w", sqliteError{res})
 	}

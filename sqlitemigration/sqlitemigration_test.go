@@ -549,7 +549,7 @@ func TestPool(t *testing.T) {
 		}
 	})
 
-	t.Run("CustomFunctionInSchema", func(t *testing.T) {
+	t.Run("CustomFunctionInMigration", func(t *testing.T) {
 		schema := Schema{
 			AppID: 0xedbeef,
 			Migrations: []string{
@@ -560,9 +560,13 @@ func TestPool(t *testing.T) {
 		pool := NewPool(filepath.Join(dir, "custom-schema-function.db"), schema, Options{
 			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
 			PrepareConn: func(conn *sqlite.Conn) error {
-				return conn.CreateFunction("theAnswer", true, 0, func(ctx sqlite.Context, _ ...sqlite.Value) {
-					ctx.ResultInt(42)
-				}, nil, nil)
+				return conn.CreateFunction("theAnswer", &sqlite.FunctionImpl{
+					NArgs:         0,
+					Deterministic: true,
+					Scalar: func(ctx sqlite.Context, args []sqlite.Value) (sqlite.Value, error) {
+						return sqlite.IntegerValue(42), nil
+					},
+				})
 			},
 		})
 		defer func() {
@@ -595,9 +599,13 @@ func TestPool(t *testing.T) {
 		pool := NewPool(filepath.Join(dir, "custom-get-function.db"), schema, Options{
 			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
 			PrepareConn: func(conn *sqlite.Conn) error {
-				return conn.CreateFunction("theAnswer", true, 0, func(ctx sqlite.Context, _ ...sqlite.Value) {
-					ctx.ResultInt(42)
-				}, nil, nil)
+				return conn.CreateFunction("theAnswer", &sqlite.FunctionImpl{
+					NArgs:         0,
+					Deterministic: true,
+					Scalar: func(ctx sqlite.Context, args []sqlite.Value) (sqlite.Value, error) {
+						return sqlite.IntegerValue(42), nil
+					},
+				})
 			},
 		})
 		defer func() {
