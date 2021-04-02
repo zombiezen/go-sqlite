@@ -38,7 +38,8 @@ see the documentation on Stmt.Step for details.
 
 The optional SQLite3 compiled in are: FTS5, RTree, JSON1, Session, GeoPoly
 
-This is not a database/sql driver.
+This is not a database/sql driver. For helper functions that make some kinds of
+statements easier to write, see the sqlitex package.
 
 
 Statement Caching
@@ -104,44 +105,5 @@ SQLite transactions have to be managed manually with this package
 by directly calling BEGIN / COMMIT / ROLLBACK or
 SAVEPOINT / RELEASE/ ROLLBACK. The sqlitex has a Savepoint
 function that helps automate this.
-
-
-A typical HTTP Handler
-
-Using a Pool to execute SQL in a concurrent HTTP handler.
-
-	var dbpool *sqlitex.Pool
-
-	func main() {
-		var err error
-		dbpool, err = sqlitex.Open("file:memory:?mode=memory", 0, 10)
-		if err != nil {
-			log.Fatal(err)
-		}
-		http.HandleFunc("/", handle)
-		log.Fatal(http.ListenAndServe(":8080", nil))
-	}
-
-	func handle(w http.ResponseWriter, r *http.Request) {
-		conn := dbpool.Get(r.Context())
-		if conn == nil {
-			return
-		}
-		defer dbpool.Put(conn)
-		stmt := conn.Prep("SELECT foo FROM footable WHERE id = $id;")
-		stmt.SetText("$id", "_user_id_")
-		for {
-			if hasRow, err := stmt.Step(); err != nil {
-				// ... handle error
-			} else if !hasRow {
-				break
-			}
-			foo := stmt.GetText("foo")
-			// ... use foo
-		}
-	}
-
-For helper functions that make some kinds of statements easier to
-write see the sqlitex package.
 */
 package sqlite // import "crawshaw.io/sqlite"
