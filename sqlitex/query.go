@@ -38,6 +38,11 @@ func resultTeardown(stmt *sqlite.Stmt) error {
 	return stmt.Reset()
 }
 
+func ResultBool(stmt *sqlite.Stmt) (bool, error) {
+	res, err := ResultInt64(stmt)
+	return res != 0, err
+}
+
 func ResultInt(stmt *sqlite.Stmt) (int, error) {
 	res, err := ResultInt64(stmt)
 	return int(res), err
