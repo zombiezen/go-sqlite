@@ -488,6 +488,10 @@ func writeFile(buf *bytes.Buffer, origPath string, fset *token.FileSet, file *as
 }
 
 func diff(ctx context.Context, buf *bytes.Buffer, origPath string, fset *token.FileSet, file *ast.File) error {
+	formatted, err := formatFile(buf, origPath, fset, file)
+	if err != nil {
+		return fmt.Errorf("diff %s: %w", origPath, err)
+	}
 	f, err := os.CreateTemp("", "zombiezen-sqlite-*.go")
 	if err != nil {
 		return fmt.Errorf("diff %s: %w", origPath, err)
@@ -499,10 +503,12 @@ func diff(ctx context.Context, buf *bytes.Buffer, origPath string, fset *token.F
 			fmt.Fprintf(os.Stderr, "%s: cleaning up temp file: %v\n", programName, err)
 		}
 	}()
-	if err := format.Node(f, fset, file); err != nil {
+	if _, err := f.Write(formatted); err != nil {
 		return fmt.Errorf("diff %s %s: %w", origPath, fname, err)
 	}
-	f.Close()
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("diff %s %s: %w", origPath, fname, err)
+	}
 	buf.Reset()
 	c := exec.Command("diff", "-u", origPath, fname)
 	c.Stdout = buf
