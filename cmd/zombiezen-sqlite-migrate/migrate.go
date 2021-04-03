@@ -70,10 +70,14 @@ func run(ctx context.Context, writeFiles bool, patterns []string) int {
 	for _, err := range errorList {
 		fmt.Fprintf(os.Stderr, "%s: %v\n", programName, err)
 	}
-	if err := installModule(ctx); err != nil {
-		fmt.Fprintf(os.Stderr, "%s: %v\n", programName, err)
+	installFailed := false
+	if writeFiles {
+		if err := installModule(ctx); err != nil {
+			fmt.Fprintf(os.Stderr, "%s: %v\n", programName, err)
+			installFailed = true
+		}
 	}
-	if len(errorList) > 0 {
+	if len(errorList) > 0 || installFailed {
 		return 1
 	}
 	return 0
@@ -344,17 +348,26 @@ func depointerType(t types.Type) types.Type {
 }
 
 func installModule(ctx context.Context) error {
-	listCmd := exec.Command("go", "list", "-m", "zombiezen.com/go/sqlite")
-	if err := sigterm.Run(ctx, listCmd); err == nil {
-		// Module is already present.
-		return nil
+	const importPath = "zombiezen.com/go/sqlite"
+	pkgs, err := packages.Load(&packages.Config{
+		Context: ctx,
+		Mode:    packages.NeedName | packages.NeedFiles,
+	}, "zombiezen.com/go/sqlite")
+	if err != nil {
+		return fmt.Errorf("go get %s: %w", importPath, err)
+	}
+	for _, pkg := range pkgs {
+		if len(pkg.Errors) == 0 && pkg.PkgPath == importPath {
+			// Already installed.
+			return nil
+		}
 	}
 
-	getCmd := exec.Command("go", "get", "-d", "zombiezen.com/go/sqlite@v0.1.0")
+	getCmd := exec.Command("go", "get", "-d", importPath+"@v0.1.0")
 	getCmd.Stdout = os.Stderr
 	getCmd.Stderr = os.Stderr
 	if err := sigterm.Run(ctx, getCmd); err != nil {
-		return fmt.Errorf("go get zombiezen.com/go/sqlite: %w", err)
+		return fmt.Errorf("go get %s: %w", importPath, err)
 	}
 	return nil
 }
