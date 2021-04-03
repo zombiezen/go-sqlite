@@ -459,7 +459,7 @@ func installModule(ctx context.Context) error {
 		}
 	}
 
-	getCmd := exec.Command("go", "get", "-d", zombiezen+"@v0.1.0")
+	getCmd := exec.Command("go", "get", "-d", zombiezen+"@v0.2.0")
 	getCmd.Stdout = os.Stderr
 	getCmd.Stderr = os.Stderr
 	if err := sigterm.Run(ctx, getCmd); err != nil {
