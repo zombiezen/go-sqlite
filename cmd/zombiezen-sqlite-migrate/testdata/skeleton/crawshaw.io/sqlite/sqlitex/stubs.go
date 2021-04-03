@@ -25,3 +25,7 @@ type Buffer struct {
 func NewBuffer(conn *sqlite.Conn) (*Buffer, error) { return nil, nil }
 
 func NewBufferSize(conn *sqlite.Conn, pageSize int) (*Buffer, error) { return nil, nil }
+
+func Exec(conn *sqlite.Conn, query string, resultFn func(stmt *sqlite.Stmt) error, args ...interface{}) error {
+	return nil
+}

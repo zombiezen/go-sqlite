@@ -14,3 +14,6 @@ func (c *Conn) GetAutocommit() bool { return false }
 type ErrorCode int
 
 const SQLITE_OK = ErrorCode(0)
+
+type Stmt struct {
+}

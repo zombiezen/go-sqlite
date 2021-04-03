@@ -93,13 +93,13 @@ const (
 	zombiezenX    = zombiezen + "/sqlitex"
 	zombiezenFile = zombiezen + "/sqlitefile"
 
-	bass = "zombiezen.com/go/bass/sql"
+	bass     = "zombiezen.com/go/bass/sql"
+	bassFile = "zombiezen.com/go/bass/sql/sqlitefile"
 )
 
 var importRemaps = map[string]string{
 	crawshaw:                  zombiezen,
 	crawshawX:                 zombiezenX,
-	bass + "/sqlitefile":      zombiezenX,
 	bass + "/sqlitemigration": zombiezen + "/sqlitemigration",
 }
 
@@ -113,13 +113,20 @@ var symbolRewrites = map[symbol]symbol{
 	{crawshaw, "", "ErrorCode"}:         {zombiezen, "", "ResultCode"},
 	{crawshaw, "Conn", "GetAutocommit"}: {zombiezen, "", "AutocommitEnabled"},
 
-	// sqlitefile
+	// New sqlitefile
 	{crawshawX, "", "Buffer"}:        {zombiezenFile, "", "Buffer"},
 	{crawshawX, "", "File"}:          {zombiezenFile, "", "File"},
 	{crawshawX, "", "NewBuffer"}:     {zombiezenFile, "", "NewBuffer"},
 	{crawshawX, "", "NewBufferSize"}: {zombiezenFile, "", "NewBufferSize"},
 	{crawshawX, "", "NewFile"}:       {zombiezenFile, "", "NewFile"},
 	{crawshawX, "", "NewFileSize"}:   {zombiezenFile, "", "NewFileSize"},
+
+	// bass sqlitefile
+	{bassFile, "", "ExecOptions"}:      {zombiezenX, "", "ExecOptions"},
+	{bassFile, "", "Exec"}:             {zombiezenX, "", "ExecFS"},
+	{bassFile, "", "ExecTransient"}:    {zombiezenX, "", "ExecTransientFS"},
+	{bassFile, "", "PrepareTransient"}: {zombiezenX, "", "PrepareTransientFS"},
+	{bassFile, "", "ExecScript"}:       {zombiezenX, "", "ExecScriptFS"},
 
 	// OpenFlags
 	{crawshaw, "", "SQLITE_OPEN_READONLY"}:       {zombiezen, "", "OpenReadOnly"},

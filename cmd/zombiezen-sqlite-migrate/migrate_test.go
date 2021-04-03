@@ -22,6 +22,10 @@ func TestProcess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	bassModule, err := skeletonModule("zombiezen.com/go/bass")
+	if err != nil {
+		t.Fatal(err)
+	}
 	rootDir := filepath.Join("testdata", "TestProcess")
 	testRunContents, err := os.ReadDir(rootDir)
 	if err != nil {
@@ -48,6 +52,7 @@ func TestProcess(t *testing.T) {
 			originalFile := filepath.Join(dir, "original.go")
 			e := packagestest.Export(t, packagestest.Modules, []packagestest.Module{
 				crawshawModule,
+				bassModule,
 				{
 					Name: mainPkgPath,
 					Files: map[string]interface{}{
