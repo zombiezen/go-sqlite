@@ -38,7 +38,7 @@ func main() {
 func run(ctx context.Context, writeFiles bool, patterns []string) int {
 	cfg := &packages.Config{
 		Context: ctx,
-		Mode:    packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo,
+		Mode:    processMode,
 		// TODO(soon): Tests: true,
 	}
 	fmt.Fprintf(os.Stderr, "%s: loading packages...\n", programName)
@@ -242,6 +242,8 @@ var symbolWarnings = map[symbol]string{
 	{"crawshaw.io/sqlite", "Value", "IsNil"}: removedWarning,
 	{"crawshaw.io/sqlite", "Value", "Len"}:   "use Value.Blob or Value.Text methods",
 }
+
+const processMode = packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo
 
 func process(pkg *packages.Package, file *ast.File) []error {
 	var warnings []error
