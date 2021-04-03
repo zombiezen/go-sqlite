@@ -30,20 +30,17 @@ zombiezen-sqlite-migrate -w ./...
 The `zombiezen-sqlite-migrate` tool automatically makes a number of mechanical
 changes beyond changing the import paths to preserve semantics.
 
-### `ErrorCode` to `ResultCode`
-
-The `crawshaw.io/sqlite.ErrorCode` type actually represents a SQLite
-[result code][], not just error codes. To better capture this, the new type
-is named `zombiezen.com/go/sqlite.ResultCode`.
+-  **`ErrorCode` renamed to `ResultCode`.** The `crawshaw.io/sqlite.ErrorCode` type
+   actually represents a SQLite [result code][], not just error codes. To better
+   capture this, the new type is named `zombiezen.com/go/sqlite.ResultCode`.
+-  **Friendlier constant names.** The constant names in `crawshaw.io/sqlite`
+   are written in upper snake case with `SQLITE_` prefixed (e.g.
+   `sqlite.SQLITE_OK`); the constant names in `zombiezen.com/go/sqlite` are
+   written in upper camel case with the type prefixed (e.g. `sqlite.ResultOK`).
+-  `sqlitex.File` and `sqlitex.Buffer` are in `zombiezen.com/go/sqlite/sqlitefile`
+   instead of `zombiezen.com/go/sqlite/sqlitex`.
 
 [result code]: https://sqlite.org/rescode.html
-
-### Friendlier constant names
-
-The constant names in `crawshaw.io/sqlite` are written in upper snake case with
-`SQLITE_` prefixed (e.g. `sqlite.SQLITE_OK`); the constant names in
-`zombiezen.com/go/sqlite` are written in upper camel case with the type prefixed
-(e.g. `sqlite.ResultOK`).
 
 ## Changes that require manual effort
 

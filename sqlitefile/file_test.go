@@ -15,7 +15,7 @@
 //
 // SPDX-License-Identifier: ISC
 
-package sqlitex
+package sqlitefile
 
 import (
 	"io/ioutil"

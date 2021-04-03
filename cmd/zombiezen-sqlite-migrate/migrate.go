@@ -16,10 +16,12 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	slashpath "path"
 	"strconv"
 
 	"golang.org/x/tools/go/ast/astutil"
 	"golang.org/x/tools/go/packages"
+	goimports "golang.org/x/tools/imports"
 	"zombiezen.com/go/bass/sigterm"
 )
 
@@ -56,7 +58,7 @@ func run(ctx context.Context, writeFiles bool, patterns []string) int {
 			errorList = append(errorList, process(pkg, f)...)
 			origPath := pkg.Fset.File(f.Pos()).Name()
 			if writeFiles {
-				if err := write(buf, origPath, pkg.Fset, f); err != nil {
+				if err := writeFile(buf, origPath, pkg.Fset, f); err != nil {
 					errorList = append(errorList, err)
 				}
 			} else {
@@ -83,146 +85,165 @@ func run(ctx context.Context, writeFiles bool, patterns []string) int {
 	return 0
 }
 
+const (
+	crawshaw  = "crawshaw.io/sqlite"
+	crawshawX = crawshaw + "/sqlitex"
+
+	zombiezen     = "zombiezen.com/go/sqlite"
+	zombiezenX    = zombiezen + "/sqlitex"
+	zombiezenFile = zombiezen + "/sqlitefile"
+
+	bass = "zombiezen.com/go/bass/sql"
+)
+
+var importRemaps = map[string]string{
+	crawshaw:                  zombiezen,
+	crawshawX:                 zombiezenX,
+	bass + "/sqlitefile":      zombiezenX,
+	bass + "/sqlitemigration": zombiezen + "/sqlitemigration",
+}
+
 type symbol struct {
 	importPath string
 	typeName   string
 	name       string
 }
 
-var importRemaps = map[string]string{
-	"crawshaw.io/sqlite":                        "zombiezen.com/go/sqlite",
-	"crawshaw.io/sqlite/sqlitex":                "zombiezen.com/go/sqlite/sqlitex",
-	"zombiezen.com/go/bass/sql/sqlitefile":      "zombiezen.com/go/sqlite/sqlitefile",
-	"zombiezen.com/go/bass/sql/sqlitemigration": "zombiezen.com/go/sqlite/sqlitemigration",
-}
+var symbolRewrites = map[symbol]symbol{
+	{crawshaw, "", "ErrorCode"}:         {zombiezen, "", "ResultCode"},
+	{crawshaw, "Conn", "GetAutocommit"}: {zombiezen, "", "AutocommitEnabled"},
 
-var symbolRewrites = map[symbol]string{
-	{"crawshaw.io/sqlite", "", "ErrorCode"}:         "ResultCode",
-	{"crawshaw.io/sqlite", "Conn", "GetAutocommit"}: "AutocommitEnabled",
+	// sqlitefile
+	{crawshawX, "", "Buffer"}:        {zombiezenFile, "", "Buffer"},
+	{crawshawX, "", "File"}:          {zombiezenFile, "", "File"},
+	{crawshawX, "", "NewBuffer"}:     {zombiezenFile, "", "NewBuffer"},
+	{crawshawX, "", "NewBufferSize"}: {zombiezenFile, "", "NewBufferSize"},
+	{crawshawX, "", "NewFile"}:       {zombiezenFile, "", "NewFile"},
+	{crawshawX, "", "NewFileSize"}:   {zombiezenFile, "", "NewFileSize"},
 
 	// OpenFlags
-	{"crawshaw.io/sqlite", "", "SQLITE_OPEN_READONLY"}:       "OpenReadOnly",
-	{"crawshaw.io/sqlite", "", "SQLITE_OPEN_READWRITE"}:      "OpenReadWrite",
-	{"crawshaw.io/sqlite", "", "SQLITE_OPEN_CREATE"}:         "OpenCreate",
-	{"crawshaw.io/sqlite", "", "SQLITE_OPEN_URI"}:            "OpenURI",
-	{"crawshaw.io/sqlite", "", "SQLITE_OPEN_MEMORY"}:         "OpenMemory",
-	{"crawshaw.io/sqlite", "", "SQLITE_OPEN_MAIN_DB"}:        "OpenMainDB",
-	{"crawshaw.io/sqlite", "", "SQLITE_OPEN_TEMP_DB"}:        "OpenTempDB",
-	{"crawshaw.io/sqlite", "", "SQLITE_OPEN_TRANSIENT_DB"}:   "OpenTransientDB",
-	{"crawshaw.io/sqlite", "", "SQLITE_OPEN_MAIN_JOURNAL"}:   "OpenMainJournal",
-	{"crawshaw.io/sqlite", "", "SQLITE_OPEN_TEMP_JOURNAL"}:   "OpenTempJournal",
-	{"crawshaw.io/sqlite", "", "SQLITE_OPEN_SUBJOURNAL"}:     "OpenSubjournal",
-	{"crawshaw.io/sqlite", "", "SQLITE_OPEN_MASTER_JOURNAL"}: "OpenMasterJournal",
-	{"crawshaw.io/sqlite", "", "SQLITE_OPEN_NOMUTEX"}:        "OpenNoMutex",
-	{"crawshaw.io/sqlite", "", "SQLITE_OPEN_FULLMUTEX"}:      "OpenFullMutex",
-	{"crawshaw.io/sqlite", "", "SQLITE_OPEN_SHAREDCACHE"}:    "OpenSharedCache",
-	{"crawshaw.io/sqlite", "", "SQLITE_OPEN_PRIVATECACHE"}:   "OpenPrivateCache",
-	{"crawshaw.io/sqlite", "", "SQLITE_OPEN_WAL"}:            "OpenWAL",
+	{crawshaw, "", "SQLITE_OPEN_READONLY"}:       {zombiezen, "", "OpenReadOnly"},
+	{crawshaw, "", "SQLITE_OPEN_READWRITE"}:      {zombiezen, "", "OpenReadWrite"},
+	{crawshaw, "", "SQLITE_OPEN_CREATE"}:         {zombiezen, "", "OpenCreate"},
+	{crawshaw, "", "SQLITE_OPEN_URI"}:            {zombiezen, "", "OpenURI"},
+	{crawshaw, "", "SQLITE_OPEN_MEMORY"}:         {zombiezen, "", "OpenMemory"},
+	{crawshaw, "", "SQLITE_OPEN_MAIN_DB"}:        {zombiezen, "", "OpenMainDB"},
+	{crawshaw, "", "SQLITE_OPEN_TEMP_DB"}:        {zombiezen, "", "OpenTempDB"},
+	{crawshaw, "", "SQLITE_OPEN_TRANSIENT_DB"}:   {zombiezen, "", "OpenTransientDB"},
+	{crawshaw, "", "SQLITE_OPEN_MAIN_JOURNAL"}:   {zombiezen, "", "OpenMainJournal"},
+	{crawshaw, "", "SQLITE_OPEN_TEMP_JOURNAL"}:   {zombiezen, "", "OpenTempJournal"},
+	{crawshaw, "", "SQLITE_OPEN_SUBJOURNAL"}:     {zombiezen, "", "OpenSubjournal"},
+	{crawshaw, "", "SQLITE_OPEN_MASTER_JOURNAL"}: {zombiezen, "", "OpenMasterJournal"},
+	{crawshaw, "", "SQLITE_OPEN_NOMUTEX"}:        {zombiezen, "", "OpenNoMutex"},
+	{crawshaw, "", "SQLITE_OPEN_FULLMUTEX"}:      {zombiezen, "", "OpenFullMutex"},
+	{crawshaw, "", "SQLITE_OPEN_SHAREDCACHE"}:    {zombiezen, "", "OpenSharedCache"},
+	{crawshaw, "", "SQLITE_OPEN_PRIVATECACHE"}:   {zombiezen, "", "OpenPrivateCache"},
+	{crawshaw, "", "SQLITE_OPEN_WAL"}:            {zombiezen, "", "OpenWAL"},
 
 	// ColumnType
-	{"crawshaw.io/sqlite", "", "SQLITE_INTEGER"}: "TypeInteger",
-	{"crawshaw.io/sqlite", "", "SQLITE_FLOAT"}:   "TypeFloat",
-	{"crawshaw.io/sqlite", "", "SQLITE_TEXT"}:    "TypeText",
-	{"crawshaw.io/sqlite", "", "SQLITE_BLOB"}:    "TypeBlob",
-	{"crawshaw.io/sqlite", "", "SQLITE_NULL"}:    "TypeNull",
+	{crawshaw, "", "SQLITE_INTEGER"}: {zombiezen, "", "TypeInteger"},
+	{crawshaw, "", "SQLITE_FLOAT"}:   {zombiezen, "", "TypeFloat"},
+	{crawshaw, "", "SQLITE_TEXT"}:    {zombiezen, "", "TypeText"},
+	{crawshaw, "", "SQLITE_BLOB"}:    {zombiezen, "", "TypeBlob"},
+	{crawshaw, "", "SQLITE_NULL"}:    {zombiezen, "", "TypeNull"},
 
 	// Primary result codes.
-	{"crawshaw.io/sqlite", "", "SQLITE_OK"}:         "ResultOK",
-	{"crawshaw.io/sqlite", "", "SQLITE_ERROR"}:      "ResultError",
-	{"crawshaw.io/sqlite", "", "SQLITE_INTERNAL"}:   "ResultInternal",
-	{"crawshaw.io/sqlite", "", "SQLITE_PERM"}:       "ResultPerm",
-	{"crawshaw.io/sqlite", "", "SQLITE_ABORT"}:      "ResultAbort",
-	{"crawshaw.io/sqlite", "", "SQLITE_BUSY"}:       "ResultBusy",
-	{"crawshaw.io/sqlite", "", "SQLITE_LOCKED"}:     "ResultLocked",
-	{"crawshaw.io/sqlite", "", "SQLITE_NOMEM"}:      "ResultNoMem",
-	{"crawshaw.io/sqlite", "", "SQLITE_READONLY"}:   "ResultReadOnly",
-	{"crawshaw.io/sqlite", "", "SQLITE_INTERRUPT"}:  "ResultInterrupt",
-	{"crawshaw.io/sqlite", "", "SQLITE_IOERR"}:      "ResultIOErr",
-	{"crawshaw.io/sqlite", "", "SQLITE_CORRUPT"}:    "ResultCorrupt",
-	{"crawshaw.io/sqlite", "", "SQLITE_NOTFOUND"}:   "ResultNotFound",
-	{"crawshaw.io/sqlite", "", "SQLITE_FULL"}:       "ResultFull",
-	{"crawshaw.io/sqlite", "", "SQLITE_CANTOPEN"}:   "ResultCantOpen",
-	{"crawshaw.io/sqlite", "", "SQLITE_PROTOCOL"}:   "ResultProtocol",
-	{"crawshaw.io/sqlite", "", "SQLITE_EMPTY"}:      "ResultEmpty",
-	{"crawshaw.io/sqlite", "", "SQLITE_SCHEMA"}:     "ResultSchema",
-	{"crawshaw.io/sqlite", "", "SQLITE_TOOBIG"}:     "ResultTooBig",
-	{"crawshaw.io/sqlite", "", "SQLITE_CONSTRAINT"}: "ResultConstraint",
-	{"crawshaw.io/sqlite", "", "SQLITE_MISMATCH"}:   "ResultMismatch",
-	{"crawshaw.io/sqlite", "", "SQLITE_MISUSE"}:     "ResultMisuse",
-	{"crawshaw.io/sqlite", "", "SQLITE_NOLFS"}:      "ResultNoLFS",
-	{"crawshaw.io/sqlite", "", "SQLITE_AUTH"}:       "ResultAuth",
-	{"crawshaw.io/sqlite", "", "SQLITE_FORMAT"}:     "ResultFormat",
-	{"crawshaw.io/sqlite", "", "SQLITE_RANGE"}:      "ResultRange",
-	{"crawshaw.io/sqlite", "", "SQLITE_NOTADB"}:     "ResultNotADB",
-	{"crawshaw.io/sqlite", "", "SQLITE_NOTICE"}:     "ResultNotice",
-	{"crawshaw.io/sqlite", "", "SQLITE_WARNING"}:    "ResultWarning",
-	{"crawshaw.io/sqlite", "", "SQLITE_ROW"}:        "ResultRow",
-	{"crawshaw.io/sqlite", "", "SQLITE_DONE"}:       "ResultDone",
+	{crawshaw, "", "SQLITE_OK"}:         {zombiezen, "", "ResultOK"},
+	{crawshaw, "", "SQLITE_ERROR"}:      {zombiezen, "", "ResultError"},
+	{crawshaw, "", "SQLITE_INTERNAL"}:   {zombiezen, "", "ResultInternal"},
+	{crawshaw, "", "SQLITE_PERM"}:       {zombiezen, "", "ResultPerm"},
+	{crawshaw, "", "SQLITE_ABORT"}:      {zombiezen, "", "ResultAbort"},
+	{crawshaw, "", "SQLITE_BUSY"}:       {zombiezen, "", "ResultBusy"},
+	{crawshaw, "", "SQLITE_LOCKED"}:     {zombiezen, "", "ResultLocked"},
+	{crawshaw, "", "SQLITE_NOMEM"}:      {zombiezen, "", "ResultNoMem"},
+	{crawshaw, "", "SQLITE_READONLY"}:   {zombiezen, "", "ResultReadOnly"},
+	{crawshaw, "", "SQLITE_INTERRUPT"}:  {zombiezen, "", "ResultInterrupt"},
+	{crawshaw, "", "SQLITE_IOERR"}:      {zombiezen, "", "ResultIOErr"},
+	{crawshaw, "", "SQLITE_CORRUPT"}:    {zombiezen, "", "ResultCorrupt"},
+	{crawshaw, "", "SQLITE_NOTFOUND"}:   {zombiezen, "", "ResultNotFound"},
+	{crawshaw, "", "SQLITE_FULL"}:       {zombiezen, "", "ResultFull"},
+	{crawshaw, "", "SQLITE_CANTOPEN"}:   {zombiezen, "", "ResultCantOpen"},
+	{crawshaw, "", "SQLITE_PROTOCOL"}:   {zombiezen, "", "ResultProtocol"},
+	{crawshaw, "", "SQLITE_EMPTY"}:      {zombiezen, "", "ResultEmpty"},
+	{crawshaw, "", "SQLITE_SCHEMA"}:     {zombiezen, "", "ResultSchema"},
+	{crawshaw, "", "SQLITE_TOOBIG"}:     {zombiezen, "", "ResultTooBig"},
+	{crawshaw, "", "SQLITE_CONSTRAINT"}: {zombiezen, "", "ResultConstraint"},
+	{crawshaw, "", "SQLITE_MISMATCH"}:   {zombiezen, "", "ResultMismatch"},
+	{crawshaw, "", "SQLITE_MISUSE"}:     {zombiezen, "", "ResultMisuse"},
+	{crawshaw, "", "SQLITE_NOLFS"}:      {zombiezen, "", "ResultNoLFS"},
+	{crawshaw, "", "SQLITE_AUTH"}:       {zombiezen, "", "ResultAuth"},
+	{crawshaw, "", "SQLITE_FORMAT"}:     {zombiezen, "", "ResultFormat"},
+	{crawshaw, "", "SQLITE_RANGE"}:      {zombiezen, "", "ResultRange"},
+	{crawshaw, "", "SQLITE_NOTADB"}:     {zombiezen, "", "ResultNotADB"},
+	{crawshaw, "", "SQLITE_NOTICE"}:     {zombiezen, "", "ResultNotice"},
+	{crawshaw, "", "SQLITE_WARNING"}:    {zombiezen, "", "ResultWarning"},
+	{crawshaw, "", "SQLITE_ROW"}:        {zombiezen, "", "ResultRow"},
+	{crawshaw, "", "SQLITE_DONE"}:       {zombiezen, "", "ResultDone"},
 
 	// Extended result codes.
-	{"crawshaw.io/sqlite", "", "SQLITE_ERROR_MISSING_COLLSEQ"}:   "ResultErrorMissingCollSeq",
-	{"crawshaw.io/sqlite", "", "SQLITE_ERROR_RETRY"}:             "ResultErrorRetry",
-	{"crawshaw.io/sqlite", "", "SQLITE_ERROR_SNAPSHOT"}:          "ResultErrorSnapshot",
-	{"crawshaw.io/sqlite", "", "SQLITE_IOERR_READ"}:              "ResultIOErrRead",
-	{"crawshaw.io/sqlite", "", "SQLITE_IOERR_SHORT_READ"}:        "ResultIOErrShortRead",
-	{"crawshaw.io/sqlite", "", "SQLITE_IOERR_WRITE"}:             "ResultIOErrWrite",
-	{"crawshaw.io/sqlite", "", "SQLITE_IOERR_FSYNC"}:             "ResultIOErrFsync",
-	{"crawshaw.io/sqlite", "", "SQLITE_IOERR_DIR_FSYNC"}:         "ResultIOErrDirFsync",
-	{"crawshaw.io/sqlite", "", "SQLITE_IOERR_TRUNCATE"}:          "ResultIOErrTruncate",
-	{"crawshaw.io/sqlite", "", "SQLITE_IOERR_FSTAT"}:             "ResultIOErrFstat",
-	{"crawshaw.io/sqlite", "", "SQLITE_IOERR_UNLOCK"}:            "ResultIOErrUnlock",
-	{"crawshaw.io/sqlite", "", "SQLITE_IOERR_RDLOCK"}:            "ResultIOErrReadLock",
-	{"crawshaw.io/sqlite", "", "SQLITE_IOERR_DELETE"}:            "ResultIOErrDelete",
-	{"crawshaw.io/sqlite", "", "SQLITE_IOERR_BLOCKED"}:           "ResultIOErrBlocked",
-	{"crawshaw.io/sqlite", "", "SQLITE_IOERR_NOMEM"}:             "ResultIOErrNoMem",
-	{"crawshaw.io/sqlite", "", "SQLITE_IOERR_ACCESS"}:            "ResultIOErrAccess",
-	{"crawshaw.io/sqlite", "", "SQLITE_IOERR_CHECKRESERVEDLOCK"}: "ResultIOErrCheckReservedLock",
-	{"crawshaw.io/sqlite", "", "SQLITE_IOERR_LOCK"}:              "ResultIOErrLock",
-	{"crawshaw.io/sqlite", "", "SQLITE_IOERR_CLOSE"}:             "ResultIOErrClose",
-	{"crawshaw.io/sqlite", "", "SQLITE_IOERR_DIR_CLOSE"}:         "ResultIOErrDirClose",
-	{"crawshaw.io/sqlite", "", "SQLITE_IOERR_SHMOPEN"}:           "ResultIOErrSHMOpen",
-	{"crawshaw.io/sqlite", "", "SQLITE_IOERR_SHMSIZE"}:           "ResultIOErrSHMSize",
-	{"crawshaw.io/sqlite", "", "SQLITE_IOERR_SHMLOCK"}:           "ResultIOErrSHMLock",
-	{"crawshaw.io/sqlite", "", "SQLITE_IOERR_SHMMAP"}:            "ResultIOErrSHMMap",
-	{"crawshaw.io/sqlite", "", "SQLITE_IOERR_SEEK"}:              "ResultIOErrSeek",
-	{"crawshaw.io/sqlite", "", "SQLITE_IOERR_DELETE_NOENT"}:      "ResultIOErrDeleteNoEnt",
-	{"crawshaw.io/sqlite", "", "SQLITE_IOERR_MMAP"}:              "ResultIOErrMMap",
-	{"crawshaw.io/sqlite", "", "SQLITE_IOERR_GETTEMPPATH"}:       "ResultIOErrGetTempPath",
-	{"crawshaw.io/sqlite", "", "SQLITE_IOERR_CONVPATH"}:          "ResultIOErrConvPath",
-	{"crawshaw.io/sqlite", "", "SQLITE_IOERR_VNODE"}:             "ResultIOErrVNode",
-	{"crawshaw.io/sqlite", "", "SQLITE_IOERR_AUTH"}:              "ResultIOErrAuth",
-	{"crawshaw.io/sqlite", "", "SQLITE_IOERR_BEGIN_ATOMIC"}:      "ResultIOErrBeginAtomic",
-	{"crawshaw.io/sqlite", "", "SQLITE_IOERR_COMMIT_ATOMIC"}:     "ResultIOErrCommitAtomic",
-	{"crawshaw.io/sqlite", "", "SQLITE_IOERR_ROLLBACK_ATOMIC"}:   "ResultIOErrRollbackAtomic",
-	{"crawshaw.io/sqlite", "", "SQLITE_LOCKED_SHAREDCACHE"}:      "ResultLockedSharedCache",
-	{"crawshaw.io/sqlite", "", "SQLITE_BUSY_RECOVERY"}:           "ResultBusyRecovery",
-	{"crawshaw.io/sqlite", "", "SQLITE_BUSY_SNAPSHOT"}:           "ResultBusySnapshot",
-	{"crawshaw.io/sqlite", "", "SQLITE_CANTOPEN_NOTEMPDIR"}:      "ResultCantOpenNoTempDir",
-	{"crawshaw.io/sqlite", "", "SQLITE_CANTOPEN_ISDIR"}:          "ResultCantOpenIsDir",
-	{"crawshaw.io/sqlite", "", "SQLITE_CANTOPEN_FULLPATH"}:       "ResultCantOpenFullPath",
-	{"crawshaw.io/sqlite", "", "SQLITE_CANTOPEN_CONVPATH"}:       "ResultCantOpenConvPath",
-	{"crawshaw.io/sqlite", "", "SQLITE_CORRUPT_VTAB"}:            "ResultCorruptVTab",
-	{"crawshaw.io/sqlite", "", "SQLITE_READONLY_RECOVERY"}:       "ResultReadOnlyRecovery",
-	{"crawshaw.io/sqlite", "", "SQLITE_READONLY_CANTLOCK"}:       "ResultReadOnlyCantLock",
-	{"crawshaw.io/sqlite", "", "SQLITE_READONLY_ROLLBACK"}:       "ResultReadOnlyRollback",
-	{"crawshaw.io/sqlite", "", "SQLITE_READONLY_DBMOVED"}:        "ResultReadOnlyDBMoved",
-	{"crawshaw.io/sqlite", "", "SQLITE_READONLY_CANTINIT"}:       "ResultReadOnlyCantInit",
-	{"crawshaw.io/sqlite", "", "SQLITE_READONLY_DIRECTORY"}:      "ResultReadOnlyDirectory",
-	{"crawshaw.io/sqlite", "", "SQLITE_ABORT_ROLLBACK"}:          "ResultAbortRollback",
-	{"crawshaw.io/sqlite", "", "SQLITE_CONSTRAINT_CHECK"}:        "ResultConstraintCheck",
-	{"crawshaw.io/sqlite", "", "SQLITE_CONSTRAINT_COMMITHOOK"}:   "ResultConstraintCommitHook",
-	{"crawshaw.io/sqlite", "", "SQLITE_CONSTRAINT_FOREIGNKEY"}:   "ResultConstraintForeignKey",
-	{"crawshaw.io/sqlite", "", "SQLITE_CONSTRAINT_FUNCTION"}:     "ResultConstraintFunction",
-	{"crawshaw.io/sqlite", "", "SQLITE_CONSTRAINT_NOTNULL"}:      "ResultConstraintNotNull",
-	{"crawshaw.io/sqlite", "", "SQLITE_CONSTRAINT_PRIMARYKEY"}:   "ResultConstraintPrimaryKey",
-	{"crawshaw.io/sqlite", "", "SQLITE_CONSTRAINT_TRIGGER"}:      "ResultConstraintTrigger",
-	{"crawshaw.io/sqlite", "", "SQLITE_CONSTRAINT_UNIQUE"}:       "ResultConstraintUnique",
-	{"crawshaw.io/sqlite", "", "SQLITE_CONSTRAINT_VTAB"}:         "ResultConstraintVTab",
-	{"crawshaw.io/sqlite", "", "SQLITE_CONSTRAINT_ROWID"}:        "ResultConstraintRowID",
-	{"crawshaw.io/sqlite", "", "SQLITE_NOTICE_RECOVER_WAL"}:      "ResultNoticeRecoverWAL",
-	{"crawshaw.io/sqlite", "", "SQLITE_NOTICE_RECOVER_ROLLBACK"}: "ResultNoticeRecoverRollback",
-	{"crawshaw.io/sqlite", "", "SQLITE_WARNING_AUTOINDEX"}:       "ResultWarningAutoIndex",
-	{"crawshaw.io/sqlite", "", "SQLITE_AUTH_USER"}:               "ResultAuthUser",
+	{crawshaw, "", "SQLITE_ERROR_MISSING_COLLSEQ"}:   {zombiezen, "", "ResultErrorMissingCollSeq"},
+	{crawshaw, "", "SQLITE_ERROR_RETRY"}:             {zombiezen, "", "ResultErrorRetry"},
+	{crawshaw, "", "SQLITE_ERROR_SNAPSHOT"}:          {zombiezen, "", "ResultErrorSnapshot"},
+	{crawshaw, "", "SQLITE_IOERR_READ"}:              {zombiezen, "", "ResultIOErrRead"},
+	{crawshaw, "", "SQLITE_IOERR_SHORT_READ"}:        {zombiezen, "", "ResultIOErrShortRead"},
+	{crawshaw, "", "SQLITE_IOERR_WRITE"}:             {zombiezen, "", "ResultIOErrWrite"},
+	{crawshaw, "", "SQLITE_IOERR_FSYNC"}:             {zombiezen, "", "ResultIOErrFsync"},
+	{crawshaw, "", "SQLITE_IOERR_DIR_FSYNC"}:         {zombiezen, "", "ResultIOErrDirFsync"},
+	{crawshaw, "", "SQLITE_IOERR_TRUNCATE"}:          {zombiezen, "", "ResultIOErrTruncate"},
+	{crawshaw, "", "SQLITE_IOERR_FSTAT"}:             {zombiezen, "", "ResultIOErrFstat"},
+	{crawshaw, "", "SQLITE_IOERR_UNLOCK"}:            {zombiezen, "", "ResultIOErrUnlock"},
+	{crawshaw, "", "SQLITE_IOERR_RDLOCK"}:            {zombiezen, "", "ResultIOErrReadLock"},
+	{crawshaw, "", "SQLITE_IOERR_DELETE"}:            {zombiezen, "", "ResultIOErrDelete"},
+	{crawshaw, "", "SQLITE_IOERR_BLOCKED"}:           {zombiezen, "", "ResultIOErrBlocked"},
+	{crawshaw, "", "SQLITE_IOERR_NOMEM"}:             {zombiezen, "", "ResultIOErrNoMem"},
+	{crawshaw, "", "SQLITE_IOERR_ACCESS"}:            {zombiezen, "", "ResultIOErrAccess"},
+	{crawshaw, "", "SQLITE_IOERR_CHECKRESERVEDLOCK"}: {zombiezen, "", "ResultIOErrCheckReservedLock"},
+	{crawshaw, "", "SQLITE_IOERR_LOCK"}:              {zombiezen, "", "ResultIOErrLock"},
+	{crawshaw, "", "SQLITE_IOERR_CLOSE"}:             {zombiezen, "", "ResultIOErrClose"},
+	{crawshaw, "", "SQLITE_IOERR_DIR_CLOSE"}:         {zombiezen, "", "ResultIOErrDirClose"},
+	{crawshaw, "", "SQLITE_IOERR_SHMOPEN"}:           {zombiezen, "", "ResultIOErrSHMOpen"},
+	{crawshaw, "", "SQLITE_IOERR_SHMSIZE"}:           {zombiezen, "", "ResultIOErrSHMSize"},
+	{crawshaw, "", "SQLITE_IOERR_SHMLOCK"}:           {zombiezen, "", "ResultIOErrSHMLock"},
+	{crawshaw, "", "SQLITE_IOERR_SHMMAP"}:            {zombiezen, "", "ResultIOErrSHMMap"},
+	{crawshaw, "", "SQLITE_IOERR_SEEK"}:              {zombiezen, "", "ResultIOErrSeek"},
+	{crawshaw, "", "SQLITE_IOERR_DELETE_NOENT"}:      {zombiezen, "", "ResultIOErrDeleteNoEnt"},
+	{crawshaw, "", "SQLITE_IOERR_MMAP"}:              {zombiezen, "", "ResultIOErrMMap"},
+	{crawshaw, "", "SQLITE_IOERR_GETTEMPPATH"}:       {zombiezen, "", "ResultIOErrGetTempPath"},
+	{crawshaw, "", "SQLITE_IOERR_CONVPATH"}:          {zombiezen, "", "ResultIOErrConvPath"},
+	{crawshaw, "", "SQLITE_IOERR_VNODE"}:             {zombiezen, "", "ResultIOErrVNode"},
+	{crawshaw, "", "SQLITE_IOERR_AUTH"}:              {zombiezen, "", "ResultIOErrAuth"},
+	{crawshaw, "", "SQLITE_IOERR_BEGIN_ATOMIC"}:      {zombiezen, "", "ResultIOErrBeginAtomic"},
+	{crawshaw, "", "SQLITE_IOERR_COMMIT_ATOMIC"}:     {zombiezen, "", "ResultIOErrCommitAtomic"},
+	{crawshaw, "", "SQLITE_IOERR_ROLLBACK_ATOMIC"}:   {zombiezen, "", "ResultIOErrRollbackAtomic"},
+	{crawshaw, "", "SQLITE_LOCKED_SHAREDCACHE"}:      {zombiezen, "", "ResultLockedSharedCache"},
+	{crawshaw, "", "SQLITE_BUSY_RECOVERY"}:           {zombiezen, "", "ResultBusyRecovery"},
+	{crawshaw, "", "SQLITE_BUSY_SNAPSHOT"}:           {zombiezen, "", "ResultBusySnapshot"},
+	{crawshaw, "", "SQLITE_CANTOPEN_NOTEMPDIR"}:      {zombiezen, "", "ResultCantOpenNoTempDir"},
+	{crawshaw, "", "SQLITE_CANTOPEN_ISDIR"}:          {zombiezen, "", "ResultCantOpenIsDir"},
+	{crawshaw, "", "SQLITE_CANTOPEN_FULLPATH"}:       {zombiezen, "", "ResultCantOpenFullPath"},
+	{crawshaw, "", "SQLITE_CANTOPEN_CONVPATH"}:       {zombiezen, "", "ResultCantOpenConvPath"},
+	{crawshaw, "", "SQLITE_CORRUPT_VTAB"}:            {zombiezen, "", "ResultCorruptVTab"},
+	{crawshaw, "", "SQLITE_READONLY_RECOVERY"}:       {zombiezen, "", "ResultReadOnlyRecovery"},
+	{crawshaw, "", "SQLITE_READONLY_CANTLOCK"}:       {zombiezen, "", "ResultReadOnlyCantLock"},
+	{crawshaw, "", "SQLITE_READONLY_ROLLBACK"}:       {zombiezen, "", "ResultReadOnlyRollback"},
+	{crawshaw, "", "SQLITE_READONLY_DBMOVED"}:        {zombiezen, "", "ResultReadOnlyDBMoved"},
+	{crawshaw, "", "SQLITE_READONLY_CANTINIT"}:       {zombiezen, "", "ResultReadOnlyCantInit"},
+	{crawshaw, "", "SQLITE_READONLY_DIRECTORY"}:      {zombiezen, "", "ResultReadOnlyDirectory"},
+	{crawshaw, "", "SQLITE_ABORT_ROLLBACK"}:          {zombiezen, "", "ResultAbortRollback"},
+	{crawshaw, "", "SQLITE_CONSTRAINT_CHECK"}:        {zombiezen, "", "ResultConstraintCheck"},
+	{crawshaw, "", "SQLITE_CONSTRAINT_COMMITHOOK"}:   {zombiezen, "", "ResultConstraintCommitHook"},
+	{crawshaw, "", "SQLITE_CONSTRAINT_FOREIGNKEY"}:   {zombiezen, "", "ResultConstraintForeignKey"},
+	{crawshaw, "", "SQLITE_CONSTRAINT_FUNCTION"}:     {zombiezen, "", "ResultConstraintFunction"},
+	{crawshaw, "", "SQLITE_CONSTRAINT_NOTNULL"}:      {zombiezen, "", "ResultConstraintNotNull"},
+	{crawshaw, "", "SQLITE_CONSTRAINT_PRIMARYKEY"}:   {zombiezen, "", "ResultConstraintPrimaryKey"},
+	{crawshaw, "", "SQLITE_CONSTRAINT_TRIGGER"}:      {zombiezen, "", "ResultConstraintTrigger"},
+	{crawshaw, "", "SQLITE_CONSTRAINT_UNIQUE"}:       {zombiezen, "", "ResultConstraintUnique"},
+	{crawshaw, "", "SQLITE_CONSTRAINT_VTAB"}:         {zombiezen, "", "ResultConstraintVTab"},
+	{crawshaw, "", "SQLITE_CONSTRAINT_ROWID"}:        {zombiezen, "", "ResultConstraintRowID"},
+	{crawshaw, "", "SQLITE_NOTICE_RECOVER_WAL"}:      {zombiezen, "", "ResultNoticeRecoverWAL"},
+	{crawshaw, "", "SQLITE_NOTICE_RECOVER_ROLLBACK"}: {zombiezen, "", "ResultNoticeRecoverRollback"},
+	{crawshaw, "", "SQLITE_WARNING_AUTOINDEX"}:       {zombiezen, "", "ResultWarningAutoIndex"},
+	{crawshaw, "", "SQLITE_AUTH_USER"}:               {zombiezen, "", "ResultAuthUser"},
 }
 
 const (
@@ -230,21 +251,21 @@ const (
 )
 
 var symbolWarnings = map[symbol]string{
-	{"crawshaw.io/sqlite", "Blob", "ReadAt"}:          removedWarning,
-	{"crawshaw.io/sqlite", "Blob", "WriteAt"}:         removedWarning,
-	{"crawshaw.io/sqlite", "Blob", "Closer"}:          removedWarning,
-	{"crawshaw.io/sqlite", "Blob", "ReadWriteSeeker"}: removedWarning,
-	{"crawshaw.io/sqlite", "Blob", "ReaderAt"}:        removedWarning,
-	{"crawshaw.io/sqlite", "Blob", "WriterAt"}:        removedWarning,
+	{crawshaw, "Blob", "ReadAt"}:          removedWarning,
+	{crawshaw, "Blob", "WriteAt"}:         removedWarning,
+	{crawshaw, "Blob", "Closer"}:          removedWarning,
+	{crawshaw, "Blob", "ReadWriteSeeker"}: removedWarning,
+	{crawshaw, "Blob", "ReaderAt"}:        removedWarning,
+	{crawshaw, "Blob", "WriterAt"}:        removedWarning,
 
-	{"crawshaw.io/sqlite", "", "Error"}: "use sqlite.ErrorCode instead",
+	{crawshaw, "", "Error"}: "use sqlite.ErrorCode instead",
 
-	{"crawshaw.io/sqlite", "Conn", "CreateFunction"}:                   "CreateFunction's API has changed substantially and this code needs to be rewritten",
-	{"crawshaw.io/sqlite", "Conn", "EnableDoubleQuotedStringLiterals"}: removedWarning,
-	{"crawshaw.io/sqlite", "Conn", "EnableLoadExtension"}:              removedWarning,
+	{crawshaw, "Conn", "CreateFunction"}:                   "CreateFunction's API has changed substantially and this code needs to be rewritten",
+	{crawshaw, "Conn", "EnableDoubleQuotedStringLiterals"}: removedWarning,
+	{crawshaw, "Conn", "EnableLoadExtension"}:              removedWarning,
 
-	{"crawshaw.io/sqlite", "Value", "IsNil"}: removedWarning,
-	{"crawshaw.io/sqlite", "Value", "Len"}:   "use Value.Blob or Value.Text methods",
+	{crawshaw, "Value", "IsNil"}: removedWarning,
+	{crawshaw, "Value", "Len"}:   "use Value.Blob or Value.Text methods",
 }
 
 const processMode = packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo
@@ -260,6 +281,13 @@ func process(pkg *packages.Package, file *ast.File) []error {
 			continue
 		}
 		if remapped := importRemaps[impPath]; remapped != "" {
+			if local := localImportName(pkg.TypesInfo, imp); local != slashpath.Base(remapped) {
+				if imp.Name == nil {
+					imp.Name = ast.NewIdent(local)
+				} else {
+					imp.Name.Name = local
+				}
+			}
 			imp.Path.Value = strconv.Quote(remapped)
 		}
 	}
@@ -291,8 +319,17 @@ func process(pkg *packages.Package, file *ast.File) []error {
 						sym.typeName = depointerType(recv.Type()).(*types.Named).Obj().Name()
 					}
 				}
-				if newName := symbolRewrites[sym]; newName != "" {
-					node.Name = newName
+				if newSym := symbolRewrites[sym]; newSym.name != "" {
+					node.Name = newSym.name
+					if newSym.importPath != importRemaps[sym.importPath] {
+						// Your symbol is in a different package, Mario!
+						if sel, ok := c.Parent().(*ast.SelectorExpr); ok {
+							if pkgIdent, ok := sel.X.(*ast.Ident); ok {
+								// Qualified identifier.
+								pkgIdent.Name = acquirePackageID(pkg.Fset, pkg.TypesInfo, file, newSym.importPath)
+							}
+						}
+					}
 				}
 				if warning := symbolWarnings[sym]; warning != "" {
 					pos := pkg.Fset.Position(node.NamePos)
@@ -320,8 +357,10 @@ func process(pkg *packages.Package, file *ast.File) []error {
 						sym.typeName = named.Obj().Name()
 					}
 				}
-				if newName := symbolRewrites[sym]; newName != "" {
-					node.Sel.Name = newName
+				if newSym := symbolRewrites[sym]; newSym.name != "" {
+					// Selections doesn't include qualified identifiers,
+					// so no import changes.
+					node.Sel.Name = newSym.name
 				}
 				if warning := symbolWarnings[sym]; warning != "" {
 					pos := pkg.Fset.Position(node.Sel.NamePos)
@@ -337,6 +376,57 @@ func process(pkg *packages.Package, file *ast.File) []error {
 	return warnings
 }
 
+func acquirePackageID(fset *token.FileSet, info *types.Info, file *ast.File, importPath string) string {
+	usedIDs := make(map[string]struct{}, len(file.Imports))
+	for _, imp := range file.Imports {
+		ipath, err := strconv.Unquote(imp.Path.Value)
+		if err != nil {
+			continue
+		}
+		id := localImportName(info, imp)
+		if id == "_" {
+			continue
+		}
+		if ipath == importPath {
+			return id
+		}
+		usedIDs[id] = struct{}{}
+	}
+
+	base := slashpath.Base(importPath)
+	if _, baseUsed := usedIDs[base]; !baseUsed {
+		astutil.AddImport(fset, file, importPath)
+		return base
+	}
+	for i := 2; ; i++ {
+		id := fmt.Sprintf("%s%d", base, i)
+		if _, used := usedIDs[id]; !used {
+			astutil.AddNamedImport(fset, file, id, importPath)
+			return id
+		}
+	}
+}
+
+// localImportName returns the identifier being used for an import declaration.
+func localImportName(info *types.Info, imp *ast.ImportSpec) string {
+	if imp.Name != nil {
+		return imp.Name.Name
+	}
+	if resolvedName, ok := info.Implicits[imp].(*types.PkgName); ok {
+		return resolvedName.Name()
+	}
+	// Fallback: Use last path component of import path if it is an identifier.
+	path, err := strconv.Unquote(imp.Path.Value)
+	if err != nil {
+		return ""
+	}
+	base := slashpath.Base(path)
+	if !token.IsIdentifier(base) {
+		return ""
+	}
+	return base
+}
+
 func depointerType(t types.Type) types.Type {
 	for {
 		p, ok := t.(*types.Pointer)
@@ -348,36 +438,43 @@ func depointerType(t types.Type) types.Type {
 }
 
 func installModule(ctx context.Context) error {
-	const importPath = "zombiezen.com/go/sqlite"
 	pkgs, err := packages.Load(&packages.Config{
 		Context: ctx,
 		Mode:    packages.NeedName | packages.NeedFiles,
-	}, "zombiezen.com/go/sqlite")
+	}, zombiezen)
 	if err != nil {
-		return fmt.Errorf("go get %s: %w", importPath, err)
+		return fmt.Errorf("go get %s: %w", zombiezen, err)
 	}
 	for _, pkg := range pkgs {
-		if len(pkg.Errors) == 0 && pkg.PkgPath == importPath {
+		if len(pkg.Errors) == 0 && pkg.PkgPath == zombiezen {
 			// Already installed.
 			return nil
 		}
 	}
 
-	getCmd := exec.Command("go", "get", "-d", importPath+"@v0.1.0")
+	getCmd := exec.Command("go", "get", "-d", zombiezen+"@v0.1.0")
 	getCmd.Stdout = os.Stderr
 	getCmd.Stderr = os.Stderr
 	if err := sigterm.Run(ctx, getCmd); err != nil {
-		return fmt.Errorf("go get %s: %w", importPath, err)
+		return fmt.Errorf("go get %s: %w", zombiezen, err)
 	}
 	return nil
 }
 
-func write(buf *bytes.Buffer, origPath string, fset *token.FileSet, file *ast.File) error {
+func formatFile(buf *bytes.Buffer, path string, fset *token.FileSet, file *ast.File) ([]byte, error) {
 	buf.Reset()
 	if err := format.Node(buf, fset, file); err != nil {
+		return nil, err
+	}
+	return goimports.Process(path, buf.Bytes(), nil)
+}
+
+func writeFile(buf *bytes.Buffer, origPath string, fset *token.FileSet, file *ast.File) error {
+	formatted, err := formatFile(buf, origPath, fset, file)
+	if err != nil {
 		return fmt.Errorf("write %s: %w", origPath, err)
 	}
-	if err := os.WriteFile(origPath, buf.Bytes(), 0o666); err != nil {
+	if err := os.WriteFile(origPath, formatted, 0o666); err != nil {
 		return err
 	}
 	return nil

@@ -45,12 +45,13 @@ func TestProcess(t *testing.T) {
 				t.Fatal(err)
 			}
 
+			originalFile := filepath.Join(dir, "original.go")
 			e := packagestest.Export(t, packagestest.Modules, []packagestest.Module{
 				crawshawModule,
 				{
 					Name: mainPkgPath,
 					Files: map[string]interface{}{
-						mainFilename: packagestest.Copy(filepath.Join(dir, "original.go")),
+						mainFilename: packagestest.Copy(originalFile),
 					},
 				},
 			})
@@ -67,7 +68,7 @@ func TestProcess(t *testing.T) {
 			pkg := pkgs[0]
 			if len(pkg.Errors) > 0 {
 				for _, err := range pkg.Errors {
-					t.Errorf("Load package %s: %v", mainPkgPath, err)
+					t.Errorf("Load %s: %v", originalFile, err)
 				}
 				return
 			}
@@ -80,11 +81,11 @@ func TestProcess(t *testing.T) {
 				t.Logf("process: %v", err)
 			}
 
-			got := new(bytes.Buffer)
-			if err := format.Node(got, pkg.Fset, file); err != nil {
+			got, err := formatFile(new(bytes.Buffer), originalFile, pkg.Fset, file)
+			if err != nil {
 				t.Fatalf("Formatting output: %v", err)
 			}
-			if diff := cmp.Diff(want, got.Bytes()); diff != "" {
+			if diff := cmp.Diff(want, got); diff != "" {
 				t.Errorf("diff a/%s b/%s:\n%s", mainFilename, mainFilename, diff)
 			}
 		})

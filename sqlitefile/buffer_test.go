@@ -15,7 +15,7 @@
 //
 // SPDX-License-Identifier: ISC
 
-package sqlitex
+package sqlitefile
 
 import (
 	"bytes"
@@ -24,6 +24,7 @@ import (
 
 	"crawshaw.io/iox/ioxtest"
 	"zombiezen.com/go/sqlite"
+	"zombiezen.com/go/sqlite/sqlitex"
 )
 
 func TestBuffer(t *testing.T) {
@@ -97,7 +98,7 @@ func TestBuffer(t *testing.T) {
 func TestConcurrentBuffer(t *testing.T) {
 	// Make sure the shared cache table lock does not
 	// apply to blob buffers (because we use temp tables).
-	dbpool, err := Open("file::memory:?mode=memory", 0, 2)
+	dbpool, err := sqlitex.Open("file::memory:?mode=memory", 0, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
