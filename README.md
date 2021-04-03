@@ -4,16 +4,27 @@
 
 This package provides a low-level Go interface to SQLite 3. It is a fork of
 [`crawshaw.io/sqlite`][] that uses [`modernc.org/sqlite`][]. It aims to be a
-mostly drop-in replacement for `crawshaw.io/sqlite`.
+mostly drop-in replacement for `crawshaw.io/sqlite`. See the [migration docs][]
+for instructions on how to migrate.
 
 [`crawshaw.io/sqlite`]: https://github.com/crawshaw.io/sqlite
 [`modernc.org/sqlite`]: https://pkg.go.dev/modernc.org/sqlite
+[migration docs]: cmd/zombiezen-sqlite-migrate/README.md
 
 ## Install
 
 ```shell
 go get zombiezen.com/go/sqlite
 ```
+
+## Getting Started
+
+If you're creating a new application, see the [package examples][].
+
+If you're looking to switch existing code that uses `crawshaw.io/sqlite`, take
+a look at the [migration docs][].
+
+[package examples]: https://pkg.go.dev/zombiezen.com/go/sqlite#pkg-examples
 
 ## License
 
