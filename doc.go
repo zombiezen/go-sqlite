@@ -106,4 +106,4 @@ by directly calling BEGIN / COMMIT / ROLLBACK or
 SAVEPOINT / RELEASE/ ROLLBACK. The sqlitex has a Savepoint
 function that helps automate this.
 */
-package sqlite // import "crawshaw.io/sqlite"
+package sqlite
