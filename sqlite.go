@@ -21,7 +21,6 @@ import (
 	"bytes"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 	"unsafe"
 
@@ -29,39 +28,6 @@ import (
 	"modernc.org/libc/sys/types"
 	lib "modernc.org/sqlite/lib"
 )
-
-var initLibState struct {
-	sync.Once
-	err error
-}
-
-func initLib() error {
-	initLibState.Do(func() {
-		tls := libc.NewTLS()
-		defer tls.Close()
-		if lib.Xsqlite3_threadsafe(tls) == 0 {
-			initLibState.err = fmt.Errorf("sqlite: thread safety configuration error")
-			return
-		}
-
-		varArgs := libc.Xmalloc(tls, ptrSize)
-		if varArgs == 0 {
-			initLibState.err = fmt.Errorf("cannot allocate memory")
-			return
-		}
-		defer libc.Xfree(tls, varArgs)
-		res := ResultCode(lib.Xsqlite3_config(
-			tls,
-			lib.SQLITE_CONFIG_MUTEX,
-			libc.VaList(varArgs, uintptr(unsafe.Pointer(&mutexMethods))),
-		))
-		if res != ResultOK {
-			initLibState.err = fmt.Errorf("sqlite: failed to configure mutex methods: %v", sqliteError{res})
-			return
-		}
-	})
-	return initLibState.err
-}
 
 // Conn is an open connection to an SQLite3 database.
 //
@@ -92,10 +58,6 @@ const ptrSize = types.Size_t(unsafe.Sizeof(uintptr(0)))
 //
 // https://www.sqlite.org/c3ref/open.html
 func OpenConn(path string, flags ...OpenFlags) (*Conn, error) {
-	if err := initLib(); err != nil {
-		return nil, fmt.Errorf("sqlite: open %q: %w", path, err)
-	}
-
 	var openFlags OpenFlags
 	for _, f := range flags {
 		openFlags |= f

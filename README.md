@@ -28,10 +28,4 @@ a look at the [migration docs][].
 
 ## License
 
-Mostly ISC, with some code borrowed from `modernc.org/sqlite`, which is under a
-BSD 3-Clause license. See [LICENSE](LICENSE) for details.
-
-Source files in this repository use [SPDX-License-Identifier tags][] to indicate
-the applicable license.
-
-[SPDX-License-Identifier tags]: https://spdx.github.io/spdx-spec/appendix-V-using-SPDX-short-identifiers-in-source-files/
+[ISC](LICENSE)
