@@ -13,23 +13,51 @@ import (
 )
 
 func Example() {
+	// Open an in-memory database.
 	conn, err := sqlite.OpenConn(":memory:", sqlite.OpenReadWrite)
 	if err != nil {
-		panic(err)
+		// handle error
 	}
 	defer conn.Close()
+
+	// Execute a query.
+	err = sqlitex.ExecTransient(conn, "SELECT 'hello, world';", func(stmt *sqlite.Stmt) error {
+		fmt.Println(stmt.ColumnText(0))
+		return nil
+	})
+	if err != nil {
+		// handle error
+	}
+
+	// Output:
+	// hello, world
+}
+
+// This is the same as the main package example, but uses the SQLite
+// statement API instead of sqlitex.
+func Example_withoutX() {
+	// Open an in-memory database.
+	conn, err := sqlite.OpenConn(":memory:", sqlite.OpenReadWrite)
+	if err != nil {
+		// handle error
+	}
+	defer conn.Close()
+
+	// Prepare a statement.
 	stmt, _, err := conn.PrepareTransient("SELECT 'hello, world';")
 	if err != nil {
-		panic(err)
+		// handle error
 	}
+	// Transient statements must always be finalized.
 	defer stmt.Finalize()
+
 	for {
 		row, err := stmt.Step()
 		if err != nil {
-			panic(err)
+			// handle error
 		}
 		if !row {
-			return
+			break
 		}
 		fmt.Println(stmt.ColumnText(0))
 	}
