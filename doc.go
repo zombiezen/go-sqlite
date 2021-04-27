@@ -64,16 +64,6 @@ the entire blob into a single []byte.
 (This is important when working either with very large blobs, or
 more commonly, a large number of moderate-sized blobs concurrently.)
 
-To write a blob, first use an INSERT statement to set the size of the
-blob and assign a rowid:
-
-	"INSERT INTO blobs (myblob) VALUES (?);"
-
-Use BindZeroBlob or SetZeroBlob to set the size of myblob.
-Then you can open the blob with:
-
-	b, err := conn.OpenBlob("", "blobs", "myblob", conn.LastInsertRowID(), true)
-
 
 Deadlines and Cancellation
 
