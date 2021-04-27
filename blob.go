@@ -129,6 +129,10 @@ type Blob struct {
 	size int32
 }
 
+func (blob *Blob) bufSlice() []byte {
+	return libc.GoBytes(blob.buf, blobBufSize)
+}
+
 // Read reads up to len(p) bytes from the blob into p.
 // https://www.sqlite.org/c3ref/blob_read.html
 func (blob *Blob) Read(p []byte) (int, error) {
@@ -154,11 +158,42 @@ func (blob *Blob) Read(p []byte) (int, error) {
 		if err := reserr(res); err != nil {
 			return fullLen - len(p), fmt.Errorf("sqlite: read blob: %w", err)
 		}
-		copy(p, libc.GoBytes(blob.buf, int(nn)))
+		copy(p, blob.bufSlice()[:int(nn)])
 		p = p[nn:]
 		blob.off += nn
 	}
 	return fullLen, nil
+}
+
+// WriteTo copies the blob to w until there's no more data to write or
+// an error occurs.
+func (blob *Blob) WriteTo(w io.Writer) (n int64, err error) {
+	if blob.blob == 0 {
+		return 0, fmt.Errorf("sqlite: read blob: %w", errInvalidBlob)
+	}
+	if blob.off >= blob.size {
+		return 0, nil
+	}
+	if err := blob.conn.interrupted(); err != nil {
+		return 0, fmt.Errorf("sqlite: read blob: %w", err)
+	}
+	for blob.off < blob.size {
+		buf := blob.bufSlice()
+		if remaining := int(blob.size - blob.off); len(buf) > remaining {
+			buf = buf[:remaining]
+		}
+		res := ResultCode(lib.Xsqlite3_blob_read(blob.conn.tls, blob.blob, blob.buf, int32(len(buf)), blob.off))
+		if err := reserr(res); err != nil {
+			return n, fmt.Errorf("sqlite: read blob: %w", err)
+		}
+		nn, err := w.Write(buf)
+		blob.off += int32(nn)
+		n += int64(nn)
+		if err != nil {
+			return n, err
+		}
+	}
+	return n, nil
 }
 
 // Write writes len(p) from p to the blob.
@@ -172,7 +207,7 @@ func (blob *Blob) Write(p []byte) (int, error) {
 	}
 	fullLen := len(p)
 	for len(p) > 0 {
-		nn := copy(libc.GoBytes(blob.buf, blobBufSize), p)
+		nn := copy(blob.bufSlice(), p)
 		res := ResultCode(lib.Xsqlite3_blob_write(blob.conn.tls, blob.blob, blob.buf, int32(nn), blob.off))
 		if err := reserr(res); err != nil {
 			return fullLen - len(p), fmt.Errorf("sqlite: write blob: %w", err)
@@ -181,6 +216,55 @@ func (blob *Blob) Write(p []byte) (int, error) {
 		blob.off += int32(nn)
 	}
 	return fullLen, nil
+}
+
+// WriteString writes s to the blob.
+// https://www.sqlite.org/c3ref/blob_write.html
+func (blob *Blob) WriteString(s string) (int, error) {
+	if blob.blob == 0 {
+		return 0, fmt.Errorf("sqlite: write blob: %w", errInvalidBlob)
+	}
+	if err := blob.conn.interrupted(); err != nil {
+		return 0, fmt.Errorf("sqlite: write blob: %w", err)
+	}
+	fullLen := len(s)
+	for len(s) > 0 {
+		nn := copy(blob.bufSlice(), s)
+		res := ResultCode(lib.Xsqlite3_blob_write(blob.conn.tls, blob.blob, blob.buf, int32(nn), blob.off))
+		if err := reserr(res); err != nil {
+			return fullLen - len(s), fmt.Errorf("sqlite: write blob: %w", err)
+		}
+		s = s[nn:]
+		blob.off += int32(nn)
+	}
+	return fullLen, nil
+}
+
+// ReadFrom copies data from r to the blob until EOF or error.
+func (blob *Blob) ReadFrom(r io.Reader) (n int64, err error) {
+	if blob.blob == 0 {
+		return 0, fmt.Errorf("sqlite: write blob: %w", errInvalidBlob)
+	}
+	if err := blob.conn.interrupted(); err != nil {
+		return 0, fmt.Errorf("sqlite: write blob: %w", err)
+	}
+	for {
+		nn, err := r.Read(blob.bufSlice())
+		if nn > 0 {
+			res := ResultCode(lib.Xsqlite3_blob_write(blob.conn.tls, blob.blob, blob.buf, int32(nn), blob.off))
+			if err := reserr(res); err != nil {
+				return n, fmt.Errorf("sqlite: write blob: %w", err)
+			}
+			n += int64(nn)
+			blob.off += int32(nn)
+		}
+		if err != nil {
+			if err == io.EOF {
+				err = nil
+			}
+			return n, err
+		}
+	}
 }
 
 // Seek sets the offset for the next Read or Write and returns the offset.

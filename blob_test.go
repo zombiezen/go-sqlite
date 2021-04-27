@@ -23,6 +23,7 @@ import (
 	"io"
 	"io/ioutil"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -35,6 +36,9 @@ var _ interface {
 	io.Writer
 	io.Seeker
 	io.Closer
+	io.StringWriter
+	io.ReaderFrom
+	io.WriterTo
 } = (*sqlite.Blob)(nil)
 
 func TestBlob(t *testing.T) {
@@ -83,12 +87,12 @@ func TestBlob(t *testing.T) {
 	if _, err := b.Seek(1, io.SeekStart); err != nil {
 		t.Fatal(err)
 	}
-	n, err = b.Write([]byte{2, 3, 4, 5})
+	n, err = b.WriteString("\x02\x03\x04\x05")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if n != 4 {
-		t.Fatalf("b.Write n=%d, want 4", n)
+		t.Fatalf("b.WriteString n=%d, want 4", n)
 	}
 	if size := b.Size(); size != 5 {
 		t.Fatalf("b.Size=%d, want 5", size)
@@ -435,5 +439,101 @@ func TestBlobPtrs(t *testing.T) {
 	}
 	if err := gzr.Close(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestBlobReadFrom(t *testing.T) {
+	c, err := sqlite.OpenConn(":memory:", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := c.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	if _, err := c.Prep("DROP TABLE IF EXISTS blobs;").Step(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Prep("CREATE TABLE blobs (col BLOB);").Step(); err != nil {
+		t.Fatal(err)
+	}
+
+	const data = "Hello, World!"
+	stmt := c.Prep("INSERT INTO blobs (col) VALUES (zeroblob($size));")
+	stmt.SetInt64("$size", int64(len(data)))
+	if _, err := stmt.Step(); err != nil {
+		t.Fatal(err)
+	}
+	rowid := c.LastInsertRowID()
+
+	blob, err := c.OpenBlob("", "blobs", "col", rowid, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := blob.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	if n, err := blob.ReadFrom(strings.NewReader(data)); n != int64(len(data)) || err != nil {
+		t.Errorf("blob.ReadFrom(strings.NewReader(%q)) = %d, %v; want %d, <nil>", data, n, err, len(data))
+	}
+	if _, err := blob.Seek(0, io.SeekStart); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := ioutil.ReadAll(blob); string(got) != data || err != nil {
+		t.Errorf("ioutil.ReadAll(blob) = %q, %v; want %q, <nil>", got, err, data)
+	}
+}
+
+func TestBlobWriteTo(t *testing.T) {
+	c, err := sqlite.OpenConn(":memory:", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := c.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	if _, err := c.Prep("DROP TABLE IF EXISTS blobs;").Step(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Prep("CREATE TABLE blobs (col BLOB);").Step(); err != nil {
+		t.Fatal(err)
+	}
+
+	const data = "Hello, World!"
+	stmt := c.Prep("INSERT INTO blobs (col) VALUES (zeroblob($size));")
+	stmt.SetInt64("$size", int64(len(data)))
+	if _, err := stmt.Step(); err != nil {
+		t.Fatal(err)
+	}
+	rowid := c.LastInsertRowID()
+
+	blob, err := c.OpenBlob("", "blobs", "col", rowid, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := blob.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	if n, err := blob.WriteString(data); n != len(data) || err != nil {
+		t.Errorf("blob.WriteString(%q) = %d, %v; want %d, <nil>", data, n, err, len(data))
+	}
+	if _, err := blob.Seek(0, io.SeekStart); err != nil {
+		t.Fatal(err)
+	}
+	buf := new(strings.Builder)
+	if n, err := blob.WriteTo(buf); n != int64(buf.Len()) || err != nil {
+		t.Errorf("blob.WriteTo(buf) = %d, %v; want %d, <nil>", n, err, buf.Len())
+	}
+	if got := buf.String(); got != data {
+		t.Errorf("wrote %q; want %q", got, data)
 	}
 }
