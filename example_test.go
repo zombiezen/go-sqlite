@@ -4,6 +4,7 @@
 package sqlite_test
 
 import (
+	"context"
 	"fmt"
 	"regexp"
 
@@ -35,6 +36,19 @@ func Example() {
 
 	// Output:
 	// hello, world
+}
+
+func ExampleConn_SetInterrupt() {
+	conn, err := sqlite.OpenConn(":memory:", sqlite.OpenReadWrite)
+	if err != nil {
+		panic(err)
+	}
+	defer conn.Close()
+
+	// You can use the Done() channel from a context to set deadlines and timeouts
+	// on queries.
+	ctx := context.TODO()
+	conn.SetInterrupt(ctx.Done())
 }
 
 func ExampleConn_CreateFunction() {

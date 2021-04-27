@@ -36,8 +36,6 @@ https://www.sqlite.org/sharedcache.html
 The implementation automatically handles shared cache locking,
 see the documentation on Stmt.Step for details.
 
-The optional SQLite3 compiled in are: FTS5, RTree, JSON1, Session, GeoPoly
-
 This is not a database/sql driver. For helper functions that make some kinds of
 statements easier to write, see the sqlitex package.
 
@@ -71,22 +69,8 @@ Every connection can have a done channel associated with it using
 the SetInterrupt method. This is typically the channel returned by
 a context.Context Done method.
 
-For example, a timeout can be associated with a connection session:
-
-	ctx := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	conn.SetInterrupt(ctx.Done())
-
 As database connections are long-lived, the SetInterrupt method can
 be called multiple times to reset the associated lifetime.
-
-When using pools, the shorthand for associating a context with a
-connection is:
-
-	conn := dbpool.Get(ctx)
-	if conn == nil {
-		// ... handle error
-	}
-	defer dbpool.Put(c)
 
 
 Transactions
