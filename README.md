@@ -7,7 +7,7 @@ This package provides a low-level Go interface to [SQLite 3][]. It is a fork of
 package.  It aims to be a mostly drop-in replacement for
 `crawshaw.io/sqlite`.
 
-[`crawshaw.io/sqlite`]: https://github.com/crawshaw.io/sqlite
+[`crawshaw.io/sqlite`]: https://github.com/crawshaw/sqlite
 [`modernc.org/sqlite`]: https://pkg.go.dev/modernc.org/sqlite
 [reference docs]: https://pkg.go.dev/zombiezen.com/go/sqlite
 [SQLite 3]: https://sqlite.org/
