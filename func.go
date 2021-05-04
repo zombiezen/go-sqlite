@@ -81,7 +81,7 @@ func (ctx Context) result(v Value, err error) {
 				return
 			}
 			copy(libc.GoBytes(cv, len(v.s)), v.s)
-			lib.Xsqlite3_result_text(ctx.tls, ctx.ptr, cv, int32(len(v.s)), freeFuncPtr)
+			lib.Xsqlite3_result_blob(ctx.tls, ctx.ptr, cv, int32(len(v.s)), freeFuncPtr)
 		}
 	default:
 		panic("unknown result Value type")
