@@ -21,6 +21,7 @@ import (
 	"bytes"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 	"unsafe"
 
@@ -91,6 +92,11 @@ func OpenConn(path string, flags ...OpenFlags) (*Conn, error) {
 	return c, nil
 }
 
+var allConns struct {
+	mu    sync.RWMutex
+	table map[uintptr]*Conn
+}
+
 func openConn(path string, openFlags OpenFlags) (_ *Conn, err error) {
 	tls := libc.NewTLS()
 	defer func() {
@@ -138,6 +144,14 @@ func openConn(path string, openFlags OpenFlags) (_ *Conn, err error) {
 		return nil, fmt.Errorf("sqlite: open %q: %w", path, sqliteError{res})
 	}
 	lib.Xsqlite3_extended_result_codes(tls, c.conn, 1)
+
+	allConns.mu.Lock()
+	if allConns.table == nil {
+		allConns.table = make(map[uintptr]*Conn)
+	}
+	allConns.table[c.conn] = c
+	allConns.mu.Unlock()
+
 	return c, nil
 }
 
@@ -161,6 +175,9 @@ func (c *Conn) Close() error {
 		}
 	}
 	xfuncs.mu.Unlock()
+	allConns.mu.Lock()
+	delete(allConns.table, c.conn)
+	allConns.mu.Unlock()
 	if !res.IsSuccess() {
 		return fmt.Errorf("sqlite: close: %w", sqliteError{res})
 	}

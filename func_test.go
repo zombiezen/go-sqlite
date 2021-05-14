@@ -36,6 +36,9 @@ func TestFunc(t *testing.T) {
 		NArgs:         2,
 		Deterministic: true,
 		Scalar: func(ctx Context, args []Value) (Value, error) {
+			if got := ctx.Conn(); got != c {
+				t.Errorf("ctx.Conn() = %p; want %p", got, c)
+			}
 			return IntegerValue(args[0].Int64() + args[1].Int64()), nil
 		},
 	})

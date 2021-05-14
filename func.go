@@ -31,13 +31,20 @@ import (
 	lib "modernc.org/sqlite/lib"
 )
 
-// Context is an *sqlite3_context.
-// It is used by custom functions to return result values.
-// An SQLite context is in no way related to a Go context.Context.
+// Context is a SQL function execution context.
+// It is in no way related to a Go context.Context.
 // https://sqlite.org/c3ref/context.html
 type Context struct {
 	tls *libc.TLS
 	ptr uintptr
+}
+
+// Conn returns the database connection that is calling the SQL function.
+func (ctx Context) Conn() *Conn {
+	connPtr := lib.Xsqlite3_context_db_handle(ctx.tls, ctx.ptr)
+	allConns.mu.RLock()
+	defer allConns.mu.RUnlock()
+	return allConns.table[connPtr]
 }
 
 func (ctx Context) result(v Value, err error) {
