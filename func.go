@@ -31,6 +31,14 @@ import (
 	lib "modernc.org/sqlite/lib"
 )
 
+var auxdata = struct {
+	mu    sync.RWMutex
+	table map[uintptr]interface{}
+	next  uintptr
+}{
+	next: 1,
+}
+
 // Context is a SQL function execution context.
 // It is in no way related to a Go context.Context.
 // https://sqlite.org/c3ref/context.html
@@ -45,6 +53,79 @@ func (ctx Context) Conn() *Conn {
 	allConns.mu.RLock()
 	defer allConns.mu.RUnlock()
 	return allConns.table[connPtr]
+}
+
+// AuxData returns the auxiliary data associated with the given argument, with
+// zero being the leftmost argument, or nil if no such data is present.
+//
+// Auxiliary data may be used by (non-aggregate) SQL functions to associate
+// metadata with argument values. If the same value is passed to multiple
+// invocations of the same SQL function during query execution, under some
+// circumstances the associated metadata may be preserved. An example of where
+// this might be useful is in a regular-expression matching function. The
+// compiled version of the regular expression can be stored as metadata
+// associated with the pattern string. Then as long as the pattern string
+// remains the same, the compiled regular expression can be reused on multiple
+// invocations of the same function.
+//
+// For more details, see https://www.sqlite.org/c3ref/get_auxdata.html
+func (ctx Context) AuxData(arg int) interface{} {
+	id := lib.Xsqlite3_get_auxdata(ctx.tls, ctx.ptr, int32(arg))
+	if id == 0 {
+		return nil
+	}
+	auxdata.mu.RLock()
+	defer auxdata.mu.RUnlock()
+	return auxdata.table[id]
+}
+
+// SetAuxData sets the auxiliary data associated with the given argument, with
+// zero being the leftmost argument. SQLite is free to discard the metadata at
+// any time, including during the call to SetAuxData.
+//
+// Auxiliary data may be used by (non-aggregate) SQL functions to associate
+// metadata with argument values. If the same value is passed to multiple
+// invocations of the same SQL function during query execution, under some
+// circumstances the associated metadata may be preserved. An example of where
+// this might be useful is in a regular-expression matching function. The
+// compiled version of the regular expression can be stored as metadata
+// associated with the pattern string. Then as long as the pattern string
+// remains the same, the compiled regular expression can be reused on multiple
+// invocations of the same function.
+//
+// For more details, see https://www.sqlite.org/c3ref/get_auxdata.html
+func (ctx Context) SetAuxData(arg int, data interface{}) {
+	auxdata.mu.Lock()
+	id := auxdata.next
+	auxdata.next++
+	if auxdata.table == nil {
+		auxdata.table = make(map[uintptr]interface{})
+	}
+	auxdata.table[id] = data
+	auxdata.mu.Unlock()
+
+	// The following is a conversion from function value to uintptr. It assumes
+	// the memory representation described in https://golang.org/s/go11func.
+	//
+	// It does this by doing the following in order:
+	// 1) Create a Go struct containing a pointer to a pointer to
+	//    freeAuxData. It is assumed that the pointer to freeAuxData will be
+	//    stored in the read-only data section and thus will not move.
+	// 2) Convert the pointer to the Go struct to a pointer to uintptr through
+	//    unsafe.Pointer. This is permitted via Rule #1 of unsafe.Pointer.
+	// 3) Dereference the pointer to uintptr to obtain the function value as a
+	//    uintptr. This is safe as long as function values are passed as pointers.
+	deleteFn := *(*uintptr)(unsafe.Pointer(&struct {
+		f func(*libc.TLS, uintptr)
+	}{freeAuxData}))
+
+	lib.Xsqlite3_set_auxdata(ctx.tls, ctx.ptr, int32(arg), id, deleteFn)
+}
+
+func freeAuxData(tls *libc.TLS, id uintptr) {
+	auxdata.mu.Lock()
+	defer auxdata.mu.Unlock()
+	delete(auxdata.table, id)
 }
 
 func (ctx Context) result(v Value, err error) {

@@ -123,6 +123,66 @@ func ExampleConn_CreateFunction() {
 	// Second matches: false
 }
 
+// This example shows the same regexp function as in the CreateFunction example,
+// but it uses auxiliary data to avoid recompiling the regular expression.
+func ExampleContext_AuxData() {
+	conn, err := sqlite.OpenConn(":memory:", sqlite.OpenReadWrite)
+	if err != nil {
+		// handle error
+	}
+	defer conn.Close()
+
+	// Add a regexp(pattern, string) function.
+	usedAux := false
+	err = conn.CreateFunction("regexp", &sqlite.FunctionImpl{
+		NArgs:         2,
+		Deterministic: true,
+		Scalar: func(ctx sqlite.Context, args []sqlite.Value) (sqlite.Value, error) {
+			// First: attempt to retrieve the compiled regexp from a previous call.
+			re, ok := ctx.AuxData(0).(*regexp.Regexp)
+			if ok {
+				usedAux = true
+			} else {
+				// Auxiliary data not present. Either this is the first call with this
+				// argument, or SQLite has discarded the auxiliary data.
+				var err error
+				re, err = regexp.Compile(args[0].Text())
+				if err != nil {
+					return sqlite.Value{}, fmt.Errorf("regexp: %w", err)
+				}
+				// Store the auxiliary data for future calls.
+				ctx.SetAuxData(0, re)
+			}
+
+			found := 0
+			if re.MatchString(args[1].Text()) {
+				found = 1
+			}
+			return sqlite.IntegerValue(int64(found)), nil
+		},
+	})
+	if err != nil {
+		// handle error
+	}
+
+	const query = `WITH test_strings(i, s) AS (VALUES (1, 'foo'), (2, 'bar')) ` +
+		`SELECT i, regexp('fo+', s) FROM test_strings ORDER BY i;`
+	err = sqlitex.ExecTransient(conn, query, func(stmt *sqlite.Stmt) error {
+		fmt.Printf("Match %d: %t\n", stmt.ColumnInt(0), stmt.ColumnInt(1) != 0)
+		return nil
+	})
+	if err != nil {
+		// handle error
+	}
+	if usedAux {
+		fmt.Println("Used aux data to speed up query!")
+	}
+	// Output:
+	// Match 1: true
+	// Match 2: false
+	// Used aux data to speed up query!
+}
+
 func ExampleBlob() {
 	// Create a new database with a "blobs" table with a single column, "myblob".
 	conn, err := sqlite.OpenConn(":memory:", sqlite.OpenReadWrite)
