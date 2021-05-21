@@ -777,6 +777,27 @@ func TestBindParamName(t *testing.T) {
 	}
 }
 
+// Just to verify that the JSON1 extension is automatically loaded.
+func TestJSON1Extension(t *testing.T) {
+	c, err := sqlite.OpenConn(":memory:", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := c.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	got, err := sqlitex.ResultText(c.Prep(`SELECT json(' { "this" : "is", "a": [ "test" ] } ');`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"this":"is","a":["test"]}`; got != want {
+		t.Errorf("json(...) = %q; want %q", got, want)
+	}
+}
+
 // TODO(soon)
 // func TestLimit(t *testing.T) {
 // 	c, err := sqlite.OpenConn(":memory:", 0)
