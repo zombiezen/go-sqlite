@@ -7,13 +7,20 @@ This package provides a low-level Go interface to [SQLite 3][]. It is a fork of
 package.  It aims to be a mostly drop-in replacement for
 `crawshaw.io/sqlite`.
 
+This package deliberately does not provide a `database/sql` driver. See
+[David Crawshaw's rationale][] for an in-depth explanation. If you want to use
+`database/sql` with SQLite without CGo, use `modernc.org/sqlite` directly.
+
 [`crawshaw.io/sqlite`]: https://github.com/crawshaw/sqlite
+[David Crawshaw's rationale]: https://crawshaw.io/blog/go-and-sqlite
 [`modernc.org/sqlite`]: https://pkg.go.dev/modernc.org/sqlite
 [reference docs]: https://pkg.go.dev/zombiezen.com/go/sqlite
 [SQLite 3]: https://sqlite.org/
 
 ## Features
 
+- Full SQLite functionality via `modernc.org/sqlite`, an automatically generated
+  translation of the original C source code of SQLite into Go
 - Builds with `CGO_ENABLED=0`, allowing cross-compiling and data race detection
 - Allows access to SQLite-specific features like [blob I/O][] and
   [user-defined functions][]
