@@ -1159,6 +1159,7 @@ func (limit Limit) String() string {
 // it.
 //
 // https://sqlite.org/c3ref/limit.html
-func (conn *Conn) Limit(id Limit, value int32) int32 {
-	return lib.Xsqlite3_limit(conn.tls, conn.conn, int32(id), int32(value))
+func (c *Conn) Limit(id Limit, value int32) int32 {
+	return lib.Xsqlite3_limit(c.tls, c.conn, int32(id), int32(value))
+}
 }

@@ -24,10 +24,10 @@ type Authorizer interface {
 
 // SetAuthorizer registers an authorizer for the database connection.
 // SetAuthorizer(nil) clears any authorizer previously set.
-func (conn *Conn) SetAuthorizer(auth Authorizer) error {
+func (c *Conn) SetAuthorizer(auth Authorizer) error {
 	if auth == nil {
-		conn.releaseAuthorizer()
-		res := ResultCode(lib.Xsqlite3_set_authorizer(conn.tls, conn.conn, 0, 0))
+		c.releaseAuthorizer()
+		res := ResultCode(lib.Xsqlite3_set_authorizer(c.tls, c.conn, 0, 0))
 		if err := reserr(res); err != nil {
 			return fmt.Errorf("sqlite: set authorizer: %w", err)
 		}
@@ -38,7 +38,7 @@ func (conn *Conn) SetAuthorizer(auth Authorizer) error {
 	if authorizers.m == nil {
 		authorizers.m = make(map[uintptr]Authorizer)
 	}
-	authorizers.m[conn.conn] = auth
+	authorizers.m[c.conn] = auth
 	authorizers.mu.Unlock()
 
 	// The following is a conversion from function value to uintptr. It assumes
@@ -56,16 +56,16 @@ func (conn *Conn) SetAuthorizer(auth Authorizer) error {
 		f func(*libc.TLS, uintptr, int32, uintptr, uintptr, uintptr, uintptr) int32
 	}{authTrampoline}))
 
-	res := ResultCode(lib.Xsqlite3_set_authorizer(conn.tls, conn.conn, xAuth, conn.conn))
+	res := ResultCode(lib.Xsqlite3_set_authorizer(c.tls, c.conn, xAuth, c.conn))
 	if err := reserr(res); err != nil {
 		return fmt.Errorf("sqlite: set authorizer: %w", err)
 	}
 	return nil
 }
 
-func (conn *Conn) releaseAuthorizer() {
+func (c *Conn) releaseAuthorizer() {
 	authorizers.mu.Lock()
-	delete(authorizers.m, conn.conn)
+	delete(authorizers.m, c.conn)
 	authorizers.mu.Unlock()
 }
 
