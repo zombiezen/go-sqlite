@@ -29,12 +29,14 @@ This package deliberately does not provide a `database/sql` driver. See
   [Go 1.16 embedding feature][]
 - A [`go fix`-like tool][migration docs] for migrating existing code using
   `crawshaw.io/sqlite`
+- A [simple REPL][] for debugging
 
 [blob I/O]: https://pkg.go.dev/zombiezen.com/go/sqlite#Blob
 [ExecScriptFS]: https://pkg.go.dev/zombiezen.com/go/sqlite/sqlitex#ExecScriptFS
 [Go 1.16 embedding feature]: https://pkg.go.dev/embed
 [migration docs]: cmd/zombiezen-sqlite-migrate/README.md
 [schema migration package]: https://pkg.go.dev/zombiezen.com/go/sqlite/sqlitemigration
+[simple REPL]: https://pkg.go.dev/zombiezen.com/go/sqlite/shell
 [user-defined functions]: https://pkg.go.dev/zombiezen.com/go/sqlite#Conn.CreateFunction
 
 ## Install

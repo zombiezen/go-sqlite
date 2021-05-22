@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `SetAuthorizer`, `Limit`, and `SetDefensive` methods to `*Conn` for use
   in ([#12](https://github.com/zombiezen/go-sqlite/issues/12))
 - Added `Version` and `VersionNumber` constants
+- Added `shell` package with basic [REPL][]
+
+[REPL]: https://en.wikipedia.org/wiki/Read%E2%80%93eval%E2%80%93print_loop
 
 ### Fixed
 
