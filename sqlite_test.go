@@ -798,25 +798,24 @@ func TestJSON1Extension(t *testing.T) {
 	}
 }
 
-// TODO(soon)
-// func TestLimit(t *testing.T) {
-// 	c, err := sqlite.OpenConn(":memory:", 0)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	defer func() {
-// 		if err := c.Close(); err != nil {
-// 			t.Error(err)
-// 		}
-// 	}()
+func TestLimit(t *testing.T) {
+	c, err := sqlite.OpenConn(":memory:", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := c.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
 
-// 	c.Limit(sqlite.SQLITE_LIMIT_SQL_LENGTH, 1)
-// 	stmt, err := c.Prepare("SELECT 1;")
-// 	if err == nil {
-// 		stmt.Finalize()
-// 		t.Fatal("Prepare did not return an error")
-// 	}
-// 	if got, want := sqlite.ErrCode(err), sqlite.SQLITE_TOOBIG; got != want {
-// 		t.Errorf("sqlite.ErrCode(err) = %v; want %v", got, want)
-// 	}
-// }
+	c.Limit(sqlite.LimitSQLLength, 1)
+	stmt, err := c.Prepare("SELECT 1;")
+	if err == nil {
+		stmt.Finalize()
+		t.Fatal("Prepare did not return an error")
+	}
+	if got, want := sqlite.ErrCode(err), sqlite.ResultTooBig; got != want {
+		t.Errorf("sqlite.ErrCode(err) = %v; want %v", got, want)
+	}
+}

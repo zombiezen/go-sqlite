@@ -1100,3 +1100,65 @@ func goStringN(s uintptr, n int) string {
 	}
 	return buf.String()
 }
+
+// Limit is a category of performance limits.
+//
+// https://sqlite.org/c3ref/c_limit_attached.html
+type Limit int32
+
+// Limit categories.
+const (
+	LimitLength            Limit = lib.SQLITE_LIMIT_LENGTH
+	LimitSQLLength         Limit = lib.SQLITE_LIMIT_SQL_LENGTH
+	LimitColumn            Limit = lib.SQLITE_LIMIT_COLUMN
+	LimitExprDepth         Limit = lib.SQLITE_LIMIT_EXPR_DEPTH
+	LimitCompoundSelect    Limit = lib.SQLITE_LIMIT_COMPOUND_SELECT
+	LimitVDBEOp            Limit = lib.SQLITE_LIMIT_VDBE_OP
+	LimitFunctionArg       Limit = lib.SQLITE_LIMIT_FUNCTION_ARG
+	LimitAttached          Limit = lib.SQLITE_LIMIT_ATTACHED
+	LimitLikePatternLength Limit = lib.SQLITE_LIMIT_LIKE_PATTERN_LENGTH
+	LimitVariableNumber    Limit = lib.SQLITE_LIMIT_VARIABLE_NUMBER
+	LimitTriggerDepth      Limit = lib.SQLITE_LIMIT_TRIGGER_DEPTH
+	LimitWorkerThreads     Limit = lib.SQLITE_LIMIT_WORKER_THREADS
+)
+
+// String returns the limit's C constant name.
+func (limit Limit) String() string {
+	switch limit {
+	case LimitLength:
+		return "SQLITE_LIMIT_LENGTH"
+	case LimitSQLLength:
+		return "SQLITE_LIMIT_SQL_LENGTH"
+	case LimitColumn:
+		return "SQLITE_LIMIT_COLUMN"
+	case LimitExprDepth:
+		return "SQLITE_LIMIT_EXPR_DEPTH"
+	case LimitCompoundSelect:
+		return "SQLITE_LIMIT_COMPOUND_SELECT"
+	case LimitVDBEOp:
+		return "SQLITE_LIMIT_VDBE_OP"
+	case LimitFunctionArg:
+		return "SQLITE_LIMIT_FUNCTION_ARG"
+	case LimitAttached:
+		return "SQLITE_LIMIT_ATTACHED"
+	case LimitLikePatternLength:
+		return "SQLITE_LIMIT_LIKE_PATTERN_LENGTH"
+	case LimitVariableNumber:
+		return "SQLITE_LIMIT_VARIABLE_NUMBER"
+	case LimitTriggerDepth:
+		return "SQLITE_LIMIT_TRIGGER_DEPTH"
+	case LimitWorkerThreads:
+		return "SQLITE_LIMIT_WORKER_THREADS"
+	default:
+		return fmt.Sprintf("Limit(%d)", int32(limit))
+	}
+}
+
+// Limit sets a runtime limit on the connection. The the previous value of the
+// limit is returned. Pass a negative value to check the limit without changing
+// it.
+//
+// https://sqlite.org/c3ref/limit.html
+func (conn *Conn) Limit(id Limit, value int32) int32 {
+	return lib.Xsqlite3_limit(conn.tls, conn.conn, int32(id), int32(value))
+}
