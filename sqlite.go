@@ -30,6 +30,16 @@ import (
 	lib "modernc.org/sqlite/lib"
 )
 
+// Version is the SQLite version in the format "X.Y.Z" where X is the major
+// version number (always 3), Y is the minor version number, and Z is the
+// release number.
+const Version = lib.SQLITE_VERSION
+
+// VersionNumber is an integer with the value (X*1000000 + Y*1000 + Z) where X
+// is the major version number (always 3), Y is the minor version number, and Z
+// is the release number.
+const VersionNumber = lib.SQLITE_VERSION_NUMBER
+
 // Conn is an open connection to an SQLite3 database.
 //
 // A Conn can only be used by goroutine at a time.
