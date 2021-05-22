@@ -1162,4 +1162,35 @@ func (limit Limit) String() string {
 func (c *Conn) Limit(id Limit, value int32) int32 {
 	return lib.Xsqlite3_limit(c.tls, c.conn, int32(id), int32(value))
 }
+
+// SetDefensive sets the "defensive" flag for a database connection. When the
+// defensive flag is enabled, language features that allow ordinary SQL to
+// deliberately corrupt the database file are disabled. The disabled features
+// include but are not limited to the following:
+//
+//   The PRAGMA writable_schema=ON statement.
+//   The PRAGMA journal_mode=OFF statement.
+//   Writes to the sqlite_dbpage virtual table.
+//   Direct writes to shadow tables.
+func (c *Conn) SetDefensive(enabled bool) error {
+	varArgs := libc.Xmalloc(c.tls, ptrSize)
+	if varArgs == 0 {
+		return fmt.Errorf("sqlite: set defensive=%t: cannot allocate memory", enabled)
+	}
+	defer libc.Xfree(c.tls, varArgs)
+
+	enabledInt := int32(0)
+	if enabled {
+		enabledInt = 1
+	}
+	res := ResultCode(lib.Xsqlite3_db_config(
+		c.tls,
+		c.conn,
+		lib.SQLITE_DBCONFIG_DEFENSIVE,
+		libc.VaList(varArgs, enabledInt),
+	))
+	if err := reserr(res); err != nil {
+		return fmt.Errorf("sqlite: set defensive=%t: %w", enabled, err)
+	}
+	return nil
 }

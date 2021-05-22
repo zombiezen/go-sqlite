@@ -819,3 +819,33 @@ func TestLimit(t *testing.T) {
 		t.Errorf("sqlite.ErrCode(err) = %v; want %v", got, want)
 	}
 }
+
+func TestSetDefensive(t *testing.T) {
+	c, err := sqlite.OpenConn(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := c.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	err = sqlitex.ExecTransient(c, `PRAGMA writable_schema=ON;`, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.SetDefensive(true); err != nil {
+		t.Error("SetDefensive:", err)
+	}
+	err = sqlitex.ExecTransient(c,
+		`INSERT INTO sqlite_schema (type, name, tbl_name, sql) `+
+			`VALUES ('table','foo','foo','CREATE TABLE foo (id integer primary key)');`,
+		nil,
+	)
+	if err == nil {
+		t.Fatal("Inserting into sqlite_schema did not return an error")
+	} else {
+		t.Log("Insert sqlite_schema:", err)
+	}
+}
