@@ -74,3 +74,10 @@ there I removed the `Error` type. [`zombiezen.com/go/sqlite.ErrCode`][] still
 extracts the `ResultCode` from an `error`, which covers most needs.
 
 [`zombiezen.com/go/sqlite.ErrCode`]: https://pkg.go.dev/zombiezen.com/go/sqlite#ErrCode
+
+### Authorizer `Action`
+
+The [`zombiezen.com/go/sqlite.Action`][] uses accessor methods instead of struct
+fields. Custom `Authorizer`s will need to be rewritten.
+
+[`zombiezen.com/go/sqlite.Action`]: https://pkg.go.dev/zombiezen.com/go/sqlite#Action
