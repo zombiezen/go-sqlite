@@ -236,3 +236,52 @@ func ExampleBlob() {
 	// Output:
 	// Hello, World!
 }
+
+func ExampleConn_SetAuthorizer() {
+	// Create a new database.
+	conn, err := sqlite.OpenConn(":memory:", sqlite.OpenReadWrite)
+	if err != nil {
+		// handle error
+	}
+	defer conn.Close()
+
+	// Set an authorizer that prevents any mutations.
+	err = conn.SetAuthorizer(sqlite.AuthorizeFunc(func(action sqlite.Action) sqlite.AuthResult {
+		typ := action.Type()
+		if typ == sqlite.OpSelect ||
+			typ == sqlite.OpRead ||
+			// Permit function calls.
+			typ == sqlite.OpFunction ||
+			// Permit transactions.
+			typ == sqlite.OpTransaction ||
+			typ == sqlite.OpSavepoint {
+			return sqlite.AuthResultOK
+		}
+		return sqlite.AuthResultDeny
+	}))
+	if err != nil {
+		// handle error
+	}
+
+	// Authorizers operate during statement preparation, so this will succeed:
+	stmt, _, err := conn.PrepareTransient(`SELECT 'Hello, World!';`)
+	if err != nil {
+		panic(err)
+	} else {
+		fmt.Println("Read-only statement prepared!")
+		if err := stmt.Finalize(); err != nil {
+			panic(err)
+		}
+	}
+
+	// But this will not:
+	stmt, _, err = conn.PrepareTransient(`CREATE TABLE foo (id INTEGER PRIMARY KEY);`)
+	if err != nil {
+		fmt.Println("Prepare CREATE TABLE failed with code", sqlite.ErrCode(err))
+	} else if err := stmt.Finalize(); err != nil {
+		panic(err)
+	}
+	// Output:
+	// Read-only statement prepared!
+	// Prepare CREATE TABLE failed with code SQLITE_AUTH
+}
