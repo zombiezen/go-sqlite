@@ -179,13 +179,6 @@ func (c *Conn) Close() error {
 	c.tls.Close()
 	c.tls = nil
 	c.releaseAuthorizer()
-	xfuncs.mu.Lock()
-	for id, f := range xfuncs.m {
-		if f.conn == c {
-			delete(xfuncs.m, id)
-		}
-	}
-	xfuncs.mu.Unlock()
 	allConns.mu.Lock()
 	delete(allConns.table, c.conn)
 	allConns.mu.Unlock()

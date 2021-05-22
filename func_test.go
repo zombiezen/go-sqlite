@@ -237,3 +237,71 @@ func TestCastTextToReal(t *testing.T) {
 		}
 	}
 }
+
+func TestIDGen(t *testing.T) {
+	const newID = -1
+	repeat := func(n int, seq ...int) []int {
+		slice := make([]int, 0, len(seq)*n)
+		for i := 0; i < n; i++ {
+			slice = append(slice, seq...)
+		}
+		return slice
+	}
+	tests := []struct {
+		name    string
+		actions []int // non-negative means reclaim the ID at the given action index
+	}{
+		{
+			name:    "Single",
+			actions: []int{newID},
+		},
+		{
+			name:    "LongSequence",
+			actions: repeat(129, newID),
+		},
+		{
+			name: "Reclaim",
+			actions: []int{
+				0: newID,
+				1: 0,
+				2: newID,
+			},
+		},
+		{
+			name: "ReclaimAfterAnother",
+			actions: []int{
+				0: newID,
+				1: newID,
+				2: 0,
+				3: newID,
+				4: newID,
+			},
+		},
+		{
+			name:    "LongSequenceWithMiddleReclaim",
+			actions: append(repeat(129, newID), 42, newID),
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			gen := new(idGen)
+			got := make([]uintptr, len(test.actions))
+			used := make(map[uintptr]struct{})
+			for i, reclaimIdx := range test.actions {
+				if reclaimIdx < 0 {
+					got[i] = gen.next()
+					t.Logf("gen.next() = %d", got[i])
+					if _, alreadyUsed := used[got[i]]; got[i] == 0 || alreadyUsed {
+						t.Fail()
+					}
+					used[got[i]] = struct{}{}
+				} else {
+					id := got[reclaimIdx]
+					t.Logf("gen.reclaim(%d)", id)
+					gen.reclaim(id)
+					delete(used, id)
+				}
+			}
+		})
+	}
+}

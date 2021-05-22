@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/bits"
 	"strconv"
 	"strings"
 	"sync"
@@ -31,12 +32,10 @@ import (
 	lib "modernc.org/sqlite/lib"
 )
 
-var auxdata = struct {
-	mu    sync.RWMutex
-	table map[uintptr]interface{}
-	next  uintptr
-}{
-	next: 1,
+var auxdata struct {
+	mu  sync.RWMutex
+	m   map[uintptr]interface{}
+	ids idGen
 }
 
 // Context is a SQL function execution context.
@@ -76,7 +75,7 @@ func (ctx Context) AuxData(arg int) interface{} {
 	}
 	auxdata.mu.RLock()
 	defer auxdata.mu.RUnlock()
-	return auxdata.table[id]
+	return auxdata.m[id]
 }
 
 // SetAuxData sets the auxiliary data associated with the given argument, with
@@ -96,12 +95,11 @@ func (ctx Context) AuxData(arg int) interface{} {
 // For more details, see https://www.sqlite.org/c3ref/get_auxdata.html
 func (ctx Context) SetAuxData(arg int, data interface{}) {
 	auxdata.mu.Lock()
-	id := auxdata.next
-	auxdata.next++
-	if auxdata.table == nil {
-		auxdata.table = make(map[uintptr]interface{})
+	id := auxdata.ids.next()
+	if auxdata.m == nil {
+		auxdata.m = make(map[uintptr]interface{})
 	}
-	auxdata.table[id] = data
+	auxdata.m[id] = data
 	auxdata.mu.Unlock()
 
 	// The following is a conversion from function value to uintptr. It assumes
@@ -125,7 +123,8 @@ func (ctx Context) SetAuxData(arg int, data interface{}) {
 func freeAuxData(tls *libc.TLS, id uintptr) {
 	auxdata.mu.Lock()
 	defer auxdata.mu.Unlock()
-	delete(auxdata.table, id)
+	delete(auxdata.m, id)
+	auxdata.ids.reclaim(id)
 }
 
 func (ctx Context) result(v Value, err error) {
@@ -372,18 +371,17 @@ func (v Value) Blob() []byte {
 }
 
 type xfunc struct {
-	conn   *Conn
 	xFunc  func(Context, []Value) (Value, error)
 	xStep  func(Context, []Value)
 	xFinal func(Context) (Value, error)
 }
 
 var xfuncs = struct {
-	mu   sync.RWMutex
-	m    map[int]*xfunc
-	next int
+	mu  sync.RWMutex
+	m   map[uintptr]*xfunc
+	ids idGen
 }{
-	m: make(map[int]*xfunc),
+	m: make(map[uintptr]*xfunc),
 }
 
 // FunctionImpl describes an application-defined SQL function. Either Scalar or
@@ -472,19 +470,15 @@ func (c *Conn) CreateFunction(name string, impl *FunctionImpl) error {
 	}
 
 	x := &xfunc{
-		conn:   c,
 		xFunc:  impl.Scalar,
 		xStep:  impl.AggregateStep,
 		xFinal: impl.AggregateFinal,
 	}
 
 	xfuncs.mu.Lock()
-	id := xfuncs.next
-	xfuncs.next++
+	id := xfuncs.ids.next()
 	xfuncs.m[id] = x
 	xfuncs.mu.Unlock()
-
-	pApp := uintptr(id)
 
 	// The following are conversions from function values to uintptr. It assumes
 	// the memory representation described in https://golang.org/s/go11func.
@@ -501,18 +495,18 @@ func (c *Conn) CreateFunction(name string, impl *FunctionImpl) error {
 	if impl.Scalar == nil {
 		stepfn = *(*uintptr)(unsafe.Pointer(&struct {
 			f func(*libc.TLS, uintptr, int32, uintptr)
-		}{stepTramp}))
+		}{stepTrampoline}))
 		finalfn = *(*uintptr)(unsafe.Pointer(&struct {
 			f func(*libc.TLS, uintptr)
-		}{finalTramp}))
+		}{finalTrampoline}))
 	} else {
 		funcfn = *(*uintptr)(unsafe.Pointer(&struct {
 			f func(*libc.TLS, uintptr, int32, uintptr)
-		}{funcTramp}))
+		}{funcTrampoline}))
 	}
 	destroyfn := *(*uintptr)(unsafe.Pointer(&struct {
 		f func(*libc.TLS, uintptr)
-	}{goDestroyTramp}))
+	}{destroyFuncTrampoline}))
 
 	numArgs := impl.NArgs
 	if numArgs < 0 {
@@ -524,7 +518,7 @@ func (c *Conn) CreateFunction(name string, impl *FunctionImpl) error {
 		cname,
 		int32(numArgs),
 		eTextRep,
-		pApp,
+		id,
 		funcfn,
 		stepfn,
 		finalfn,
@@ -537,16 +531,14 @@ func (c *Conn) CreateFunction(name string, impl *FunctionImpl) error {
 }
 
 func getxfuncs(tls *libc.TLS, ctx uintptr) *xfunc {
-	id := int(lib.Xsqlite3_user_data(tls, ctx))
-
+	id := lib.Xsqlite3_user_data(tls, ctx)
 	xfuncs.mu.RLock()
 	x := xfuncs.m[id]
 	xfuncs.mu.RUnlock()
-
 	return x
 }
 
-func funcTramp(tls *libc.TLS, ctx uintptr, n int32, valarray uintptr) {
+func funcTrampoline(tls *libc.TLS, ctx uintptr, n int32, valarray uintptr) {
 	vals := make([]Value, 0, int(n))
 	for ; len(vals) < cap(vals); valarray += uintptr(ptrSize) {
 		vals = append(vals, Value{
@@ -558,7 +550,7 @@ func funcTramp(tls *libc.TLS, ctx uintptr, n int32, valarray uintptr) {
 	goCtx.result(getxfuncs(tls, ctx).xFunc(goCtx, vals))
 }
 
-func stepTramp(tls *libc.TLS, ctx uintptr, n int32, valarray uintptr) {
+func stepTrampoline(tls *libc.TLS, ctx uintptr, n int32, valarray uintptr) {
 	vals := make([]Value, 0, int(n))
 	for ; len(vals) < cap(vals); valarray += uintptr(ptrSize) {
 		vals = append(vals, Value{
@@ -570,16 +562,39 @@ func stepTramp(tls *libc.TLS, ctx uintptr, n int32, valarray uintptr) {
 	getxfuncs(tls, ctx).xStep(goCtx, vals)
 }
 
-func finalTramp(tls *libc.TLS, ctx uintptr) {
+func finalTrampoline(tls *libc.TLS, ctx uintptr) {
 	x := getxfuncs(tls, ctx)
 	goCtx := Context{tls: tls, ptr: ctx}
 	goCtx.result(x.xFinal(goCtx))
 }
 
-func goDestroyTramp(tls *libc.TLS, ptr uintptr) {
-	id := int(ptr)
-
+func destroyFuncTrampoline(tls *libc.TLS, id uintptr) {
 	xfuncs.mu.Lock()
+	defer xfuncs.mu.Unlock()
 	delete(xfuncs.m, id)
-	xfuncs.mu.Unlock()
+	xfuncs.ids.reclaim(id)
+}
+
+// idGen is an ID generator. The zero value is ready to use.
+type idGen struct {
+	bitset []uint64
+}
+
+func (gen *idGen) next() uintptr {
+	base := uintptr(1)
+	for i := 0; i < len(gen.bitset); i, base = i+1, base+64 {
+		b := gen.bitset[i]
+		if b != 1<<64-1 {
+			n := uintptr(bits.TrailingZeros64(^b))
+			gen.bitset[i] |= 1 << n
+			return base + n
+		}
+	}
+	gen.bitset = append(gen.bitset, 1)
+	return base
+}
+
+func (gen *idGen) reclaim(id uintptr) {
+	bit := id - 1
+	gen.bitset[bit/64] &^= 1 << (bit % 64)
 }
