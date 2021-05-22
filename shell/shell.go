@@ -38,7 +38,9 @@ func Run(conn *sqlite.Conn) {
 	}
 	defer rl.Close()
 
-	fmt.Printf("SQLite version %s\n", sqlite.Version)
+	if readline.DefaultIsTerminal() {
+		fmt.Printf("SQLite version %s\n", sqlite.Version)
+	}
 	var sql string
 	for {
 		if len(sql) > 0 {
