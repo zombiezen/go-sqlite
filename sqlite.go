@@ -77,7 +77,7 @@ func OpenConn(path string, flags ...OpenFlags) (*Conn, error) {
 		openFlags = OpenReadWrite | OpenCreate | OpenWAL | OpenURI | OpenNoMutex
 	}
 
-	c, err := openConn(path, openFlags)
+	c, err := openConn(path, openFlags&^OpenWAL)
 	if err != nil {
 		return nil, err
 	}

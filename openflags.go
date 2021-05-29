@@ -16,23 +16,16 @@ import (
 type OpenFlags uint
 
 const (
-	OpenReadOnly      OpenFlags = lib.SQLITE_OPEN_READONLY
-	OpenReadWrite     OpenFlags = lib.SQLITE_OPEN_READWRITE
-	OpenCreate        OpenFlags = lib.SQLITE_OPEN_CREATE
-	OpenURI           OpenFlags = lib.SQLITE_OPEN_URI
-	OpenMemory        OpenFlags = lib.SQLITE_OPEN_MEMORY
-	OpenMainDB        OpenFlags = lib.SQLITE_OPEN_MAIN_DB
-	OpenTempDB        OpenFlags = lib.SQLITE_OPEN_TEMP_DB
-	OpenTransientDB   OpenFlags = lib.SQLITE_OPEN_TRANSIENT_DB
-	OpenMainJournal   OpenFlags = lib.SQLITE_OPEN_MAIN_JOURNAL
-	OpenTempJournal   OpenFlags = lib.SQLITE_OPEN_TEMP_JOURNAL
-	OpenSubjournal    OpenFlags = lib.SQLITE_OPEN_SUBJOURNAL
-	OpenMasterJournal OpenFlags = lib.SQLITE_OPEN_MASTER_JOURNAL
-	OpenNoMutex       OpenFlags = lib.SQLITE_OPEN_NOMUTEX
-	OpenFullMutex     OpenFlags = lib.SQLITE_OPEN_FULLMUTEX
-	OpenSharedCache   OpenFlags = lib.SQLITE_OPEN_SHAREDCACHE
-	OpenPrivateCache  OpenFlags = lib.SQLITE_OPEN_PRIVATECACHE
-	OpenWAL           OpenFlags = lib.SQLITE_OPEN_WAL
+	OpenReadOnly     OpenFlags = lib.SQLITE_OPEN_READONLY
+	OpenReadWrite    OpenFlags = lib.SQLITE_OPEN_READWRITE
+	OpenCreate       OpenFlags = lib.SQLITE_OPEN_CREATE
+	OpenURI          OpenFlags = lib.SQLITE_OPEN_URI
+	OpenMemory       OpenFlags = lib.SQLITE_OPEN_MEMORY
+	OpenNoMutex      OpenFlags = lib.SQLITE_OPEN_NOMUTEX
+	OpenFullMutex    OpenFlags = lib.SQLITE_OPEN_FULLMUTEX
+	OpenSharedCache  OpenFlags = lib.SQLITE_OPEN_SHAREDCACHE
+	OpenPrivateCache OpenFlags = lib.SQLITE_OPEN_PRIVATECACHE
+	OpenWAL          OpenFlags = lib.SQLITE_OPEN_WAL
 )
 
 // String returns a pipe-separated list of the C constant names set in flags.
@@ -57,34 +50,6 @@ func (flags OpenFlags) String() string {
 	if flags&OpenMemory != 0 {
 		parts = append(parts, "SQLITE_OPEN_MEMORY")
 		flags &^= OpenMemory
-	}
-	if flags&OpenMainDB != 0 {
-		parts = append(parts, "SQLITE_OPEN_MAIN_DB")
-		flags &^= OpenMainDB
-	}
-	if flags&OpenTempDB != 0 {
-		parts = append(parts, "SQLITE_OPEN_TEMP_DB")
-		flags &^= OpenTempDB
-	}
-	if flags&OpenTransientDB != 0 {
-		parts = append(parts, "SQLITE_OPEN_TRANSIENT_DB")
-		flags &^= OpenTransientDB
-	}
-	if flags&OpenMainJournal != 0 {
-		parts = append(parts, "SQLITE_OPEN_MAIN_JOURNAL")
-		flags &^= OpenMainJournal
-	}
-	if flags&OpenTempJournal != 0 {
-		parts = append(parts, "SQLITE_OPEN_TEMP_JOURNAL")
-		flags &^= OpenTempJournal
-	}
-	if flags&OpenSubjournal != 0 {
-		parts = append(parts, "SQLITE_OPEN_SUBJOURNAL")
-		flags &^= OpenSubjournal
-	}
-	if flags&OpenMasterJournal != 0 {
-		parts = append(parts, "SQLITE_OPEN_MASTER_JOURNAL")
-		flags &^= OpenMasterJournal
 	}
 	if flags&OpenNoMutex != 0 {
 		parts = append(parts, "SQLITE_OPEN_NOMUTEX")
