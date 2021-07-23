@@ -21,7 +21,6 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"time"
 
 	"zombiezen.com/go/sqlite"
 )
@@ -45,19 +44,11 @@ import (
 //	}
 //	defer dbpool.Put(conn)
 type Pool struct {
-	// If checkReset, the Put method checks all of the connection's
-	// prepared statements and ensures they were correctly cleaned up.
-	// If they were not, Put will panic with details.
-	//
-	// TODO: export this? Is it enough of a performance concern?
-	checkReset bool
-
 	free   chan *sqlite.Conn
 	closed chan struct{}
 
+	mu  sync.Mutex
 	all map[*sqlite.Conn]context.CancelFunc
-
-	mu sync.RWMutex
 }
 
 // Open opens a fixed-size pool of SQLite connections.
@@ -74,9 +65,8 @@ func Open(uri string, flags sqlite.OpenFlags, poolSize int) (pool *Pool, err err
 	}
 
 	p := &Pool{
-		checkReset: true,
-		free:       make(chan *sqlite.Conn, poolSize),
-		closed:     make(chan struct{}),
+		free:   make(chan *sqlite.Conn, poolSize),
+		closed: make(chan struct{}),
 	}
 	defer func() {
 		// If an error occurred, call Close outside the lock so this doesn't deadlock.
@@ -158,55 +148,50 @@ func (p *Pool) Put(conn *sqlite.Conn) {
 	if conn == nil {
 		panic("attempted to Put a nil Conn into Pool")
 	}
-	if p.checkReset {
-		query := conn.CheckReset()
-		if query != "" {
-			panic(fmt.Sprintf(
-				"connection returned to pool has active statement: %q",
-				query))
-		}
+	query := conn.CheckReset()
+	if query != "" {
+		panic(fmt.Sprintf(
+			"connection returned to pool has active statement: %q",
+			query))
 	}
 
-	p.mu.RLock()
+	p.mu.Lock()
 	cancel, found := p.all[conn]
-	p.mu.RUnlock()
+	if found {
+		p.all[conn] = func() {}
+	}
+	p.mu.Unlock()
 
 	if !found {
 		panic("sqlite.Pool.Put: connection not created by this pool")
 	}
 
+	conn.SetInterrupt(nil)
 	cancel()
 	p.free <- conn
 }
 
-// PoolCloseTimeout is the
-var PoolCloseTimeout = 5 * time.Second
-
-// Close interrupts and closes all the connections in the Pool.
-//
-// Close blocks until all connections are returned to the Pool.
-//
-// Close will panic if not all connections are returned before
-// PoolCloseTimeout.
+// Close interrupts and closes all the connections in the Pool,
+// blocking until all connections are returned to the Pool.
 func (p *Pool) Close() (err error) {
 	close(p.closed)
 
-	p.mu.RLock()
-	for _, cancel := range p.all {
+	p.mu.Lock()
+	n := len(p.all)
+	cancelList := make([]context.CancelFunc, 0, n)
+	for conn, cancel := range p.all {
+		cancelList = append(cancelList, cancel)
+		p.all[conn] = func() {}
+	}
+	p.mu.Unlock()
+
+	for _, cancel := range cancelList {
 		cancel()
 	}
-	p.mu.RUnlock()
-
-	timeout := time.After(PoolCloseTimeout)
-	for closed := 0; closed < len(p.all); closed++ {
-		select {
-		case conn := <-p.free:
-			err2 := conn.Close()
-			if err == nil {
-				err = err2
-			}
-		case <-timeout:
-			panic("not all connections returned to Pool before timeout")
+	for closed := 0; closed < n; closed++ {
+		conn := <-p.free
+		if err2 := conn.Close(); err == nil {
+			err = err2
 		}
 	}
 	return
