@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Removed `OpenFlags` that are only used for VFS.
 
+### Fixed
+
+- Properly clean up WAL when using `sqlitex.Pool`
+  ([#14](https://github.com/zombiezen/go-sqlite/issues/14))
+
 ## [0.5.0][] - 2021-05-22
 
 [0.5.0]: https://github.com/zombiezen/go-sqlite/releases/tag/v0.5.0
