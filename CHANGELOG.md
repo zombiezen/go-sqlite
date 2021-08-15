@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Properly clean up WAL when using `sqlitex.Pool`
   ([#14](https://github.com/zombiezen/go-sqlite/issues/14))
+- Disabled double-quoted string literals.
 
 ## [0.5.0][] - 2021-05-22
 

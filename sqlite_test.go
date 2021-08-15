@@ -123,6 +123,16 @@ func TestConn(t *testing.T) {
 	if !reflect.DeepEqual(wantInts, gotInts) {
 		t.Errorf("SELECT foo2: got %v, want %v", gotInts, wantInts)
 	}
+
+	if err := stmt.Finalize(); err != nil {
+		t.Error(err)
+	}
+
+	stmt, err = c.Prepare(`SELECT "foo" = 'foo';`)
+	if err == nil {
+		stmt.Finalize()
+		t.Error("Double-quoted string literals are permitted")
+	}
 }
 
 func TestEarlyInterrupt(t *testing.T) {

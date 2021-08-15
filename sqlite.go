@@ -82,6 +82,36 @@ func OpenConn(path string, flags ...OpenFlags) (*Conn, error) {
 		return nil, err
 	}
 
+	// Disable double-quoted string literals.
+	varArgs := libc.Xmalloc(c.tls, ptrSize)
+	if varArgs == 0 {
+		c.Close()
+		return nil, fmt.Errorf("sqlite: open %q: cannot allocate memory", path)
+	}
+	defer libc.Xfree(c.tls, varArgs)
+	res := ResultCode(lib.Xsqlite3_db_config(
+		c.tls,
+		c.conn,
+		lib.SQLITE_DBCONFIG_DQS_DDL,
+		libc.VaList(varArgs, int32(0), uintptr(0)),
+	))
+	if err := reserr(res); err != nil {
+		// Making error opaque because it's not part of the primary connection
+		// opening and reflects an internal error.
+		return nil, fmt.Errorf("sqlite: open %q: disable double-quoted string literals: %v", path, err)
+	}
+	res = ResultCode(lib.Xsqlite3_db_config(
+		c.tls,
+		c.conn,
+		lib.SQLITE_DBCONFIG_DQS_DML,
+		libc.VaList(varArgs, int32(0), uintptr(0)),
+	))
+	if err := reserr(res); err != nil {
+		// Making error opaque because it's not part of the primary connection
+		// opening and reflects an internal error.
+		return nil, fmt.Errorf("sqlite: open %q: disable double-quoted string literals: %v", path, err)
+	}
+
 	if openFlags&OpenWAL != 0 {
 		stmt, _, err := c.PrepareTransient("PRAGMA journal_mode=wal;")
 		if err != nil {
