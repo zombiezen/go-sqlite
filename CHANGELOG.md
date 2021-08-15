@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+### Added
+
+- Added back the session API: `Session`, `ChangesetIterator`, `Changegroup`, and
+  various functions. There are some slight naming changes from the
+  `crawshaw.io/sqlite` API, but they can all be migrated automatically with the
+  migration tool. ([#16](https://github.com/zombiezen/go-sqlite/issues/16))
+
 ### Removed
 
 - Removed `OpenFlags` that are only used for VFS.

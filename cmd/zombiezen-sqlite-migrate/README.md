@@ -39,6 +39,7 @@ changes beyond changing the import paths to preserve semantics.
    written in upper camel case with the type prefixed (e.g. `sqlite.ResultOK`).
 -  `sqlitex.File` and `sqlitex.Buffer` are in `zombiezen.com/go/sqlite/sqlitefile`
    instead of `zombiezen.com/go/sqlite/sqlitex`.
+-  The **session API** has some symbols renamed for clarity.
 
 [result code]: https://sqlite.org/rescode.html
 

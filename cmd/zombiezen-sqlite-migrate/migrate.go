@@ -110,8 +110,28 @@ type symbol struct {
 }
 
 var symbolRewrites = map[symbol]symbol{
-	{crawshaw, "", "ErrorCode"}:         {zombiezen, "", "ResultCode"},
-	{crawshaw, "Conn", "GetAutocommit"}: {zombiezen, "", "AutocommitEnabled"},
+	{crawshaw, "", "ErrorCode"}:                 {zombiezen, "", "ResultCode"},
+	{crawshaw, "", "ChangesetInvert"}:           {zombiezen, "", "InvertChangeset"},
+	{crawshaw, "", "ChangesetConcat"}:           {zombiezen, "", "ConcatChangesets"},
+	{crawshaw, "Conn", "GetAutocommit"}:         {zombiezen, "Conn", "AutocommitEnabled"},
+	{crawshaw, "Conn", "ChangesetApply"}:        {zombiezen, "Conn", "ApplyChangeset"},
+	{crawshaw, "Conn", "ChangesetApplyInverse"}: {zombiezen, "Conn", "ApplyInverseChangeset"},
+
+	// Session
+	{crawshaw, "Session", "Changeset"}: {zombiezen, "Session", "WriteChangeset"},
+	{crawshaw, "Session", "Patchset"}:  {zombiezen, "Session", "WritePatchset"},
+
+	// ChangesetIterator
+	{crawshaw, "", "ChangesetIter"}:            {zombiezen, "", "ChangesetIterator"},
+	{crawshaw, "", "ChangesetIterStart"}:       {zombiezen, "", "NewChangesetIterator"},
+	{crawshaw, "ChangesetIter", "Finalize"}:    {zombiezen, "ChangesetIterator", "Close"},
+	{crawshaw, "ChangesetIter", "Conflict"}:    {zombiezen, "ChangesetIterator", "ConflictValue"},
+	{crawshaw, "ChangesetIter", "FKConflicts"}: {zombiezen, "ChangesetIterator", "ForeignKeyConflicts"},
+	{crawshaw, "ChangesetIter", "PK"}:          {zombiezen, "ChangesetIterator", "PrimaryKey"},
+
+	// Changegroup
+	{crawshaw, "Changegroup", "Delete"}: {zombiezen, "Changegroup", "Clear"},
+	{crawshaw, "Changegroup", "Output"}: {zombiezen, "Changegroup", "WriteTo"},
 
 	// New sqlitefile
 	{crawshawX, "", "Buffer"}:        {zombiezenFile, "", "Buffer"},
@@ -298,6 +318,18 @@ var symbolRewrites = map[symbol]symbol{
 	// AuthResult
 	{crawshaw, "", "SQLITE_DENY"}:   {zombiezen, "", "AuthResultDeny"},
 	{crawshaw, "", "SQLITE_IGNORE"}: {zombiezen, "", "AuthResultIgnore"},
+
+	// ConflictType
+	{crawshaw, "", "SQLITE_CHANGESET_DATA"}:        {zombiezen, "", "ChangesetData"},
+	{crawshaw, "", "SQLITE_CHANGESET_NOTFOUND"}:    {zombiezen, "", "ChangesetNotFound"},
+	{crawshaw, "", "SQLITE_CHANGESET_CONFLICT"}:    {zombiezen, "", "ChangesetConflict"},
+	{crawshaw, "", "SQLITE_CHANGESET_CONSTRAINT"}:  {zombiezen, "", "ChangesetConstraint"},
+	{crawshaw, "", "SQLITE_CHANGESET_FOREIGN_KEY"}: {zombiezen, "", "ChangesetForeignKey"},
+
+	// ConflictAction
+	{crawshaw, "", "SQLITE_CHANGESET_OMIT"}:    {zombiezen, "", "ChangesetOmit"},
+	{crawshaw, "", "SQLITE_CHANGESET_ABORT"}:   {zombiezen, "", "ChangesetAbort"},
+	{crawshaw, "", "SQLITE_CHANGESET_REPLACE"}: {zombiezen, "", "ChangesetReplace"},
 }
 
 const (

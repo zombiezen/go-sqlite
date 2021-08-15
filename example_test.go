@@ -4,8 +4,10 @@
 package sqlite_test
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"regexp"
 
 	"zombiezen.com/go/sqlite"
@@ -284,4 +286,29 @@ func ExampleConn_SetAuthorizer() {
 	// Output:
 	// Read-only statement prepared!
 	// Prepare CREATE TABLE failed with code SQLITE_AUTH
+}
+
+// This example shows how to use a changegroup to produce similar results to
+// a call to ConcatChangesets.
+func ExampleChangegroup() {
+	// Get changesets from somewhere.
+	var changeset1, changeset2 io.Reader
+
+	// Create a changegroup.
+	grp := new(sqlite.Changegroup)
+	defer grp.Clear()
+
+	// Add changesets to the changegroup.
+	if err := grp.Add(changeset1); err != nil {
+		// Handle error
+	}
+	if err := grp.Add(changeset2); err != nil {
+		// Handle error
+	}
+
+	// Write the changegroup to a buffer.
+	output := new(bytes.Buffer)
+	if _, err := grp.WriteTo(output); err != nil {
+		// Handle error
+	}
 }
