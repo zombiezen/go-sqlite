@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `crawshaw.io/sqlite` API, but they can all be migrated automatically with the
   migration tool. ([#16](https://github.com/zombiezen/go-sqlite/issues/16))
 
+### Changed
+
+- Method calls to a `nil` `*sqlite.Conn` will return an error rather than panic.
+  ([#17](https://github.com/zombiezen/go-sqlite/issues/17))
+
 ### Removed
 
 - Removed `OpenFlags` that are only used for VFS.

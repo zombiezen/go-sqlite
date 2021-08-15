@@ -433,6 +433,9 @@ type FunctionImpl struct {
 //
 // https://sqlite.org/appfunc.html
 func (c *Conn) CreateFunction(name string, impl *FunctionImpl) error {
+	if c == nil {
+		return fmt.Errorf("sqlite: create function: nil connection")
+	}
 	if name == "" {
 		return fmt.Errorf("sqlite: create function: no name provided")
 	}

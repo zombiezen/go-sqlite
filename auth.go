@@ -25,6 +25,9 @@ type Authorizer interface {
 // SetAuthorizer registers an authorizer for the database connection.
 // SetAuthorizer(nil) clears any authorizer previously set.
 func (c *Conn) SetAuthorizer(auth Authorizer) error {
+	if c == nil {
+		return fmt.Errorf("sqlite: set authorizer: nil connection")
+	}
 	if auth == nil {
 		c.releaseAuthorizer()
 		res := ResultCode(lib.Xsqlite3_set_authorizer(c.tls, c.conn, 0, 0))

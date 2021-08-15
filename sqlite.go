@@ -168,6 +168,9 @@ func openConn(path string, openFlags OpenFlags) (_ *Conn, err error) {
 // Close closes the database connection using sqlite3_close and finalizes
 // persistent prepared statements. https://www.sqlite.org/c3ref/close.html
 func (c *Conn) Close() error {
+	if c == nil {
+		return fmt.Errorf("sqlite: close: nil connection")
+	}
 	c.cancelInterrupt()
 	c.closed = true
 	for _, stmt := range c.stmts {
@@ -191,15 +194,20 @@ func (c *Conn) Close() error {
 // AutocommitEnabled reports whether conn is in autocommit mode.
 // https://sqlite.org/c3ref/get_autocommit.html
 func (c *Conn) AutocommitEnabled() bool {
+	if c == nil {
+		return false
+	}
 	return lib.Xsqlite3_get_autocommit(c.tls, c.conn) != 0
 }
 
 // CheckReset reports whether any statement on this connection is in the process
 // of returning results.
 func (c *Conn) CheckReset() string {
-	for _, stmt := range c.stmts {
-		if stmt.lastHasRow {
-			return stmt.query
+	if c != nil {
+		for _, stmt := range c.stmts {
+			if stmt.lastHasRow {
+				return stmt.query
+			}
 		}
 	}
 	return ""
@@ -224,6 +232,9 @@ func (c *Conn) CheckReset() string {
 //
 // SetInterrupt returns the old doneCh assigned to the connection.
 func (c *Conn) SetInterrupt(doneCh <-chan struct{}) (oldDoneCh <-chan struct{}) {
+	if c == nil {
+		return nil
+	}
 	if c.closed {
 		panic("sqlite.Conn is closed")
 	}
@@ -261,7 +272,9 @@ func (c *Conn) SetInterrupt(doneCh <-chan struct{}) (oldDoneCh <-chan struct{}) 
 //
 // https://www.sqlite.org/c3ref/busy_timeout.html
 func (c *Conn) SetBusyTimeout(d time.Duration) {
-	lib.Xsqlite3_busy_timeout(c.tls, c.conn, int32(d/time.Millisecond))
+	if c != nil {
+		lib.Xsqlite3_busy_timeout(c.tls, c.conn, int32(d/time.Millisecond))
+	}
 }
 
 func (c *Conn) interrupted() error {
@@ -317,6 +330,9 @@ func (c *Conn) Prep(query string) *Stmt {
 //
 // https://www.sqlite.org/c3ref/prepare.html
 func (c *Conn) Prepare(query string) (*Stmt, error) {
+	if c == nil {
+		return nil, fmt.Errorf("sqlite: prepare %q: nil connection", query)
+	}
 	if stmt := c.stmts[query]; stmt != nil {
 		if err := stmt.Reset(); err != nil {
 			return nil, err
@@ -349,6 +365,9 @@ func (c *Conn) Prepare(query string) (*Stmt, error) {
 //
 // https://www.sqlite.org/c3ref/prepare.html
 func (c *Conn) PrepareTransient(query string) (stmt *Stmt, trailingBytes int, err error) {
+	if c == nil {
+		return nil, 0, fmt.Errorf("sqlite: prepare %q: nil connection", query)
+	}
 	// TODO(soon)
 	// if stmt != nil {
 	// 	runtime.SetFinalizer(stmt, func(stmt *Stmt) {
@@ -416,6 +435,9 @@ func (c *Conn) prepare(query string, flags uint32) (*Stmt, int, error) {
 //
 // https://www.sqlite.org/c3ref/changes.html
 func (c *Conn) Changes() int {
+	if c == nil {
+		return 0
+	}
 	return int(lib.Xsqlite3_changes(c.tls, c.conn))
 }
 
@@ -423,6 +445,9 @@ func (c *Conn) Changes() int {
 //
 // https://www.sqlite.org/c3ref/last_insert_rowid.html
 func (c *Conn) LastInsertRowID() int64 {
+	if c == nil {
+		return 0
+	}
 	return lib.Xsqlite3_last_insert_rowid(c.tls, c.conn)
 }
 
@@ -1163,6 +1188,9 @@ func (limit Limit) String() string {
 //
 // https://sqlite.org/c3ref/limit.html
 func (c *Conn) Limit(id Limit, value int32) int32 {
+	if c == nil {
+		return 0
+	}
 	return lib.Xsqlite3_limit(c.tls, c.conn, int32(id), int32(value))
 }
 
@@ -1176,6 +1204,9 @@ func (c *Conn) Limit(id Limit, value int32) int32 {
 //   Writes to the sqlite_dbpage virtual table.
 //   Direct writes to shadow tables.
 func (c *Conn) SetDefensive(enabled bool) error {
+	if c == nil {
+		return fmt.Errorf("sqlite: set defensive=%t: nil connection", enabled)
+	}
 	varArgs := libc.Xmalloc(c.tls, ptrSize)
 	if varArgs == 0 {
 		return fmt.Errorf("sqlite: set defensive=%t: cannot allocate memory", enabled)

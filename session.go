@@ -45,6 +45,9 @@ type Session struct {
 //
 // https://www.sqlite.org/session/sqlite3session_create.html
 func (c *Conn) CreateSession(db string) (*Session, error) {
+	if c == nil {
+		return nil, fmt.Errorf("sqlite: create session: nil connection")
+	}
 	var cdb uintptr
 	if db == "" || db == "main" {
 		cdb = mainCString
@@ -210,6 +213,9 @@ func (s *Session) WritePatchset(w io.Writer) error {
 // resolve the conflict. See https://www.sqlite.org/session/sqlite3changeset_apply.html
 // for more details.
 func (c *Conn) ApplyChangeset(r io.Reader, filterFn func(tableName string) bool, conflictFn ConflictHandler) error {
+	if c == nil {
+		return fmt.Errorf("sqlite: apply changeset: nil connection")
+	}
 	if conflictFn == nil {
 		return fmt.Errorf("sqlite: apply changeset: no conflict handler provided")
 	}
@@ -293,6 +299,9 @@ func changesetApplyConflict(tls *libc.TLS, pCtx uintptr, eConflict int32, p uint
 // ApplyInverseChangeset applies the inverse of a changeset to the database.
 // See ApplyChangeset and InvertChangeset for more details.
 func (c *Conn) ApplyInverseChangeset(r io.Reader, filterFn func(tableName string) bool, conflictFn ConflictHandler) error {
+	if c == nil {
+		return fmt.Errorf("sqlite: apply changeset: nil connection")
+	}
 	pr, pw := io.Pipe()
 	go func() {
 		err := InvertChangeset(pw, pr)
