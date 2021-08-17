@@ -83,7 +83,7 @@ func OpenConn(path string, flags ...OpenFlags) (*Conn, error) {
 	}
 
 	// Disable double-quoted string literals.
-	varArgs := libc.Xmalloc(c.tls, ptrSize)
+	varArgs := libc.Xmalloc(c.tls, 8*2)
 	if varArgs == 0 {
 		c.Close()
 		return nil, fmt.Errorf("sqlite: open %q: cannot allocate memory", path)
@@ -1237,7 +1237,7 @@ func (c *Conn) SetDefensive(enabled bool) error {
 	if c == nil {
 		return fmt.Errorf("sqlite: set defensive=%t: nil connection", enabled)
 	}
-	varArgs := libc.Xmalloc(c.tls, ptrSize)
+	varArgs := libc.Xmalloc(c.tls, 8)
 	if varArgs == 0 {
 		return fmt.Errorf("sqlite: set defensive=%t: cannot allocate memory", enabled)
 	}
