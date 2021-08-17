@@ -139,14 +139,15 @@ func (p *Pool) Get(ctx context.Context) *sqlite.Conn {
 
 // Put puts an SQLite connection back into the Pool.
 //
-// Put will panic if conn is nil or if the conn was not originally created by
-// p.
+// Put will panic if the conn was not originally created by p. Put(nil) is a
+// no-op.
 //
 // Applications must ensure that all non-nil Conns returned from Get are
 // returned to the same Pool with Put.
 func (p *Pool) Put(conn *sqlite.Conn) {
 	if conn == nil {
-		panic("attempted to Put a nil Conn into Pool")
+		// See https://github.com/zombiezen/go-sqlite/issues/17
+		return
 	}
 	query := conn.CheckReset()
 	if query != "" {
