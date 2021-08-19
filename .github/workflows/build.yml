@@ -23,8 +23,14 @@ jobs:
         go-version: ${{ matrix.go }}
     - name: Check out code
       uses: actions/checkout@v2
-    - name: Run tests
+    - name: Run tests with race detector
       run: go test -mod=readonly -race -v ./...
+      if: ${{ matrix.arch == 'amd64' }}
+      env:
+        GOARCH: ${{ matrix.arch }}
+    - name: Run tests without race detector
+      run: go test -mod=readonly -v ./...
+      if: ${{ matrix.arch != 'amd64' }}
       env:
         GOARCH: ${{ matrix.arch }}
   migrate:
