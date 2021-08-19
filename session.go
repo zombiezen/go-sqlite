@@ -26,6 +26,7 @@ import (
 	"unsafe"
 
 	"modernc.org/libc"
+	"modernc.org/libc/sys/types"
 	lib "modernc.org/sqlite/lib"
 )
 
@@ -442,17 +443,17 @@ func (iter *ChangesetIterator) Operation() (*ChangesetOperation, error) {
 		return nil, fmt.Errorf("sqlite: changeset iterator operation: %v", err)
 	}
 	defer libc.Xfree(iter.tls, pzTab)
-	pnCol, err := malloc(iter.tls, uint64(unsafe.Sizeof(int32(0))))
+	pnCol, err := malloc(iter.tls, types.Size_t(unsafe.Sizeof(int32(0))))
 	if err != nil {
 		return nil, fmt.Errorf("sqlite: changeset iterator operation: %v", err)
 	}
 	defer libc.Xfree(iter.tls, pnCol)
-	pOp, err := malloc(iter.tls, uint64(unsafe.Sizeof(int32(0))))
+	pOp, err := malloc(iter.tls, types.Size_t(unsafe.Sizeof(int32(0))))
 	if err != nil {
 		return nil, fmt.Errorf("sqlite: changeset iterator operation: %v", err)
 	}
 	defer libc.Xfree(iter.tls, pOp)
-	pbIndirect, err := malloc(iter.tls, uint64(unsafe.Sizeof(int32(0))))
+	pbIndirect, err := malloc(iter.tls, types.Size_t(unsafe.Sizeof(int32(0))))
 	if err != nil {
 		return nil, fmt.Errorf("sqlite: changeset iterator operation: %v", err)
 	}
@@ -543,7 +544,7 @@ func (iter *ChangesetIterator) ConflictValue(col int) (Value, error) {
 //
 // https://www.sqlite.org/session/sqlite3changeset_fk_conflicts.html
 func (iter *ChangesetIterator) ForeignKeyConflicts() (int, error) {
-	pnOut, err := malloc(iter.tls, uint64(unsafe.Sizeof(int32(0))))
+	pnOut, err := malloc(iter.tls, types.Size_t(unsafe.Sizeof(int32(0))))
 	if err != nil {
 		return 0, fmt.Errorf("sqlite: get number of foreign key conflicts: %v", err)
 	}
@@ -564,7 +565,7 @@ func (iter *ChangesetIterator) PrimaryKey() ([]bool, error) {
 		return nil, fmt.Errorf("sqlite: get primary key columns: %v", err)
 	}
 	defer libc.Xfree(iter.tls, pabPK)
-	pnCol, err := malloc(iter.tls, uint64(unsafe.Sizeof(int32(0))))
+	pnCol, err := malloc(iter.tls, types.Size_t(unsafe.Sizeof(int32(0))))
 	if err != nil {
 		return nil, fmt.Errorf("sqlite: get primary key columns: %v", err)
 	}

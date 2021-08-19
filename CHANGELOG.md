@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 [Unreleased]: https://github.com/zombiezen/go-sqlite/compare/v0.6.2...main
 
+## [Unreleased][]
+
+### Fixed
+
+- Fixed compile breakage on 32-bit architectures. Thanks to Jan Mercl for the
+  report.
+
 ## [0.6.2][] - 2021-08-17
 
 [0.6.2]: https://github.com/zombiezen/go-sqlite/releases/tag/v0.6.2
