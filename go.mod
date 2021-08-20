@@ -8,6 +8,6 @@ require (
 	github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e
 	github.com/chzyer/test v0.0.0-20180213035817-a1ea475d72b1 // indirect
 	github.com/google/go-cmp v0.5.3
-	modernc.org/libc v1.9.11
+	modernc.org/libc v1.10.0
 	modernc.org/sqlite v1.11.3-0.20210718182236-cb1f916bce97
 )

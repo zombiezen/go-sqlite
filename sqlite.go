@@ -83,7 +83,7 @@ func OpenConn(path string, flags ...OpenFlags) (*Conn, error) {
 	}
 
 	// Disable double-quoted string literals.
-	varArgs := libc.Xmalloc(c.tls, 8*2)
+	varArgs := libc.NewVaList(int32(0), uintptr(0))
 	if varArgs == 0 {
 		c.Close()
 		return nil, fmt.Errorf("sqlite: open %q: cannot allocate memory", path)
@@ -93,7 +93,7 @@ func OpenConn(path string, flags ...OpenFlags) (*Conn, error) {
 		c.tls,
 		c.conn,
 		lib.SQLITE_DBCONFIG_DQS_DDL,
-		libc.VaList(varArgs, int32(0), uintptr(0)),
+		varArgs,
 	))
 	if err := reserr(res); err != nil {
 		// Making error opaque because it's not part of the primary connection
@@ -104,7 +104,7 @@ func OpenConn(path string, flags ...OpenFlags) (*Conn, error) {
 		c.tls,
 		c.conn,
 		lib.SQLITE_DBCONFIG_DQS_DML,
-		libc.VaList(varArgs, int32(0), uintptr(0)),
+		varArgs,
 	))
 	if err := reserr(res); err != nil {
 		// Making error opaque because it's not part of the primary connection
@@ -1237,21 +1237,21 @@ func (c *Conn) SetDefensive(enabled bool) error {
 	if c == nil {
 		return fmt.Errorf("sqlite: set defensive=%t: nil connection", enabled)
 	}
-	varArgs := libc.Xmalloc(c.tls, 8)
+	enabledInt := int32(0)
+	if enabled {
+		enabledInt = 1
+	}
+	varArgs := libc.NewVaList(enabledInt)
 	if varArgs == 0 {
 		return fmt.Errorf("sqlite: set defensive=%t: cannot allocate memory", enabled)
 	}
 	defer libc.Xfree(c.tls, varArgs)
 
-	enabledInt := int32(0)
-	if enabled {
-		enabledInt = 1
-	}
 	res := ResultCode(lib.Xsqlite3_db_config(
 		c.tls,
 		c.conn,
 		lib.SQLITE_DBCONFIG_DEFENSIVE,
-		libc.VaList(varArgs, enabledInt),
+		varArgs,
 	))
 	if err := reserr(res); err != nil {
 		return fmt.Errorf("sqlite: set defensive=%t: %w", enabled, err)
