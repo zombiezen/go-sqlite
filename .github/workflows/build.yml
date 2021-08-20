@@ -24,12 +24,12 @@ jobs:
     - name: Check out code
       uses: actions/checkout@v2
     - name: Run tests with race detector
-      run: go test -mod=readonly -race -v ./...
+      run: go test -mod=readonly -race -tags=libc.memgrind -v ./...
       if: ${{ matrix.arch == 'amd64' }}
       env:
         GOARCH: ${{ matrix.arch }}
     - name: Run tests without race detector
-      run: go test -mod=readonly -v ./...
+      run: go test -mod=readonly -v -tags=libc.memgrind ./...
       if: ${{ matrix.arch != 'amd64' }}
       env:
         GOARCH: ${{ matrix.arch }}
