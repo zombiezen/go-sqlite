@@ -20,6 +20,7 @@ package sqlite_test
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -29,6 +30,7 @@ import (
 	"testing"
 	"time"
 
+	"modernc.org/libc"
 	"zombiezen.com/go/sqlite"
 	"zombiezen.com/go/sqlite/sqlitex"
 )
@@ -858,4 +860,14 @@ func TestSetDefensive(t *testing.T) {
 	} else {
 		t.Log("Insert sqlite_schema:", err)
 	}
+}
+
+func TestMain(m *testing.M) {
+	libc.MemAuditStart()
+	rc := m.Run()
+	if err := libc.MemAuditReport(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		rc = 1
+	}
+	os.Exit(rc)
 }
