@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+### Added
+
+- `sqlitemigration.Schema` has a new option for disabling foreign keys for
+  individual migrations. This makes it easier to perform migrations that require
+  [reconstructing a table][]. ([#20](https://github.com/zombiezen/go-sqlite/issues/20))
+
+[reconstructing a table]: https://sqlite.org/lang_altertable.html#making_other_kinds_of_table_schema_changes
+
+### Changed
+
+- `sqlitemigration.Migrate` and `*sqlitemigration.Pool` no longer use a
+  transaction to apply the entire set of migrations: they now only use
+  transactions during each individual migration. This was never documented, so
+  in theory no one should be depending on this behavior. However, this does mean
+  that two processes trying to open and migrate a database concurrently may race
+  to apply migrations, whereas before only one process would acquire the write
+  lock and migrate.
+
 ### Fixed
 
 - Fixed compile breakage on 32-bit architectures. Thanks to Jan Mercl for the

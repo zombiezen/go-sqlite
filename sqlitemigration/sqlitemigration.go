@@ -31,9 +31,23 @@ type Schema struct {
 	// transaction which is rolled back on any error.
 	Migrations []string
 
+	// MigrationOptions specifies options for each migration. len(MigrationOptions)
+	// must not be greater than len(Migrations).
+	MigrationOptions []*MigrationOptions
+
 	// RepeatableMigration is a SQL script to run if any migrations ran. The
 	// script is wrapped in a transaction which is rolled back on any error.
 	RepeatableMigration string
+}
+
+// MigrationOptions holds optional parameters for a migration.
+type MigrationOptions struct {
+	// If DisableForeignKeys is true, then before starting the migration's
+	// transaction, "PRAGMA foreign_keys = off;" will be executed. After the
+	// migration's transaction completes, then the "PRAGMA foreign_keys" setting
+	// will be restored to the value it was before executing
+	// "PRAGMA foreign_keys = off;".
+	DisableForeignKeys bool
 }
 
 // Options specifies optional behaviors for the pool.
@@ -269,8 +283,124 @@ func Migrate(ctx context.Context, conn *sqlite.Conn, schema Schema) error {
 	return migrateDB(ctx, conn, schema, nil)
 }
 
-func migrateDB(ctx context.Context, conn *sqlite.Conn, schema Schema, onStart SignalFunc) (err error) {
+func migrateDB(ctx context.Context, conn *sqlite.Conn, schema Schema, onStart SignalFunc) error {
 	defer conn.SetInterrupt(conn.SetInterrupt(ctx.Done()))
+
+	userVersionStmt, _, err := conn.PrepareTransient("PRAGMA user_version;")
+	if err != nil {
+		return fmt.Errorf("migrate database: %w", err)
+	}
+	defer userVersionStmt.Finalize()
+
+	schemaVersion, err := ensureAppID(conn, schema.AppID, userVersionStmt)
+	if err != nil {
+		return fmt.Errorf("migrate database: %w", err)
+	}
+
+	onStart.call()
+
+	var foreignKeysEnabled bool
+	err = sqlitex.ExecTransient(conn, "PRAGMA foreign_keys;", func(stmt *sqlite.Stmt) error {
+		foreignKeysEnabled = stmt.ColumnInt(0) != 0
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("migrate database: %w", err)
+	}
+	var fkOnStmt, fkOffStmt *sqlite.Stmt
+	if foreignKeysEnabled {
+		fkOnStmt, _, err = conn.PrepareTransient("PRAGMA foreign_keys = on;")
+		if err != nil {
+			return fmt.Errorf("migrate database: %w", err)
+		}
+		defer fkOnStmt.Finalize()
+		fkOffStmt, _, err = conn.PrepareTransient("PRAGMA foreign_keys = off;")
+		if err != nil {
+			return fmt.Errorf("migrate database: %w", err)
+		}
+		defer fkOffStmt.Finalize()
+	}
+
+	beginStmt, _, err := conn.PrepareTransient("BEGIN IMMEDIATE;")
+	if err != nil {
+		return fmt.Errorf("migrate database: %w", err)
+	}
+	defer beginStmt.Finalize()
+	commitStmt, _, err := conn.PrepareTransient("COMMIT;")
+	if err != nil {
+		return fmt.Errorf("migrate database: %w", err)
+	}
+	defer commitStmt.Finalize()
+	migratedLast := false
+	for ; schemaVersion < len(schema.Migrations); schemaVersion++ {
+		migration := schema.Migrations[schemaVersion]
+		if migration == "" {
+			continue
+		}
+		disableFKs := foreignKeysEnabled &&
+			schemaVersion < len(schema.MigrationOptions) &&
+			schema.MigrationOptions[schemaVersion] != nil &&
+			schema.MigrationOptions[schemaVersion].DisableForeignKeys
+		if disableFKs {
+			if err := stepAndReset(fkOffStmt); err != nil {
+				return fmt.Errorf("migrate database: disable foreign keys: %w", err)
+			}
+		}
+
+		if err := stepAndReset(beginStmt); err != nil {
+			return fmt.Errorf("migrate database: apply migrations[%d]: %w", schemaVersion, err)
+		}
+		if _, err := userVersionStmt.Step(); err != nil {
+			rollback(conn)
+			return fmt.Errorf("migrate database: %w", err)
+		}
+		actualSchemaVersion := userVersionStmt.ColumnInt(0)
+		if err := userVersionStmt.Reset(); err != nil {
+			rollback(conn)
+			return fmt.Errorf("migrate database: %w", err)
+		}
+		if actualSchemaVersion != schemaVersion {
+			// A different process migrated while we were not inside a transaction.
+			rollback(conn)
+			schemaVersion = actualSchemaVersion - 1
+			continue
+		}
+
+		err := sqlitex.ExecScript(conn, fmt.Sprintf("%s;\nPRAGMA user_version = %d;\n", migration, schemaVersion+1))
+		if err != nil {
+			rollback(conn)
+			return fmt.Errorf("migrate database: apply migrations[%d]: %w", schemaVersion, err)
+		}
+
+		if err := stepAndReset(commitStmt); err != nil {
+			rollback(conn)
+			return fmt.Errorf("migrate database: apply migrations[%d]: %w", schemaVersion, err)
+		}
+		if schemaVersion == len(schema.Migrations)-1 {
+			migratedLast = true
+		}
+		if disableFKs {
+			if err := stepAndReset(fkOnStmt); err != nil {
+				return fmt.Errorf("migrate database: reenable foreign keys: %w", err)
+			}
+		}
+	}
+	if migratedLast && schema.RepeatableMigration != "" {
+		if err := sqlitex.ExecScript(conn, schema.RepeatableMigration); err != nil {
+			return fmt.Errorf("migrate database: apply repeatable migration: %w", err)
+		}
+	}
+	return nil
+}
+
+func rollback(conn *sqlite.Conn) {
+	if conn.AutocommitEnabled() {
+		return
+	}
+	sqlitex.ExecTransient(conn, "ROLLBACK;", nil)
+}
+
+func ensureAppID(conn *sqlite.Conn, wantAppID int32, userVersionStmt *sqlite.Stmt) (schemaVersion int, err error) {
 	defer sqlitex.Save(conn)(&err)
 
 	var hasSchema bool
@@ -279,7 +409,7 @@ func migrateDB(ctx context.Context, conn *sqlite.Conn, schema Schema, onStart Si
 		return nil
 	})
 	if err != nil {
-		return fmt.Errorf("migrate database: %w", err)
+		return 0, err
 	}
 	var dbAppID int32
 	err = sqlitex.ExecTransient(conn, "PRAGMA application_id;", func(stmt *sqlite.Stmt) error {
@@ -287,43 +417,25 @@ func migrateDB(ctx context.Context, conn *sqlite.Conn, schema Schema, onStart Si
 		return nil
 	})
 	if err != nil {
-		return fmt.Errorf("migrate database: %w", err)
+		return 0, err
 	}
-	if dbAppID != schema.AppID && !(dbAppID == 0 && !hasSchema) {
-		return fmt.Errorf("migrate database: database application_id = %#x (expected %#x)", dbAppID, schema.AppID)
+	if dbAppID != wantAppID && !(dbAppID == 0 && !hasSchema) {
+		return 0, fmt.Errorf("database application_id = %#x (expected %#x)", dbAppID, wantAppID)
 	}
-	var schemaVersion int
-	err = sqlitex.ExecTransient(conn, "PRAGMA user_version;", func(stmt *sqlite.Stmt) error {
-		schemaVersion = stmt.ColumnInt(0)
-		return nil
-	})
-	if err != nil {
-		return fmt.Errorf("migrate database: %w", err)
+	if _, err := userVersionStmt.Step(); err != nil {
+		return 0, err
+	}
+	schemaVersion = userVersionStmt.ColumnInt(0)
+	if err := userVersionStmt.Reset(); err != nil {
+		return 0, err
 	}
 	// Using Sprintf because PRAGMAs don't permit arbitrary expressions, and thus
 	// don't permit using parameter substitution.
-	err = sqlitex.ExecTransient(conn, fmt.Sprintf("PRAGMA application_id = %d;", schema.AppID), nil)
+	err = sqlitex.ExecTransient(conn, fmt.Sprintf("PRAGMA application_id = %d;", wantAppID), nil)
 	if err != nil {
-		return fmt.Errorf("migrate database: %w", err)
+		return 0, err
 	}
-	onStart.call()
-	migrated := schemaVersion < len(schema.Migrations)
-	for ; schemaVersion < len(schema.Migrations); schemaVersion++ {
-		migration := schema.Migrations[schemaVersion]
-		if migration == "" {
-			continue
-		}
-		err := sqlitex.ExecScript(conn, fmt.Sprintf("%s;\nPRAGMA user_version = %d;\n", migration, schemaVersion+1))
-		if err != nil {
-			return fmt.Errorf("migrate database: apply migrations[%d]: %w", schemaVersion, err)
-		}
-	}
-	if migrated && schema.RepeatableMigration != "" {
-		if err := sqlitex.ExecScript(conn, schema.RepeatableMigration); err != nil {
-			return fmt.Errorf("migrate database: apply repeatable migration: %w", err)
-		}
-	}
-	return nil
+	return schemaVersion, nil
 }
 
 // A SignalFunc is called at most once when a particular event in a Pool's
@@ -355,3 +467,10 @@ func (f ReportFunc) call(err error) {
 // the connection is about to be used. Once ConnPrepareFunc returns nil for a
 // given connection, it will not be called on that connection again.
 type ConnPrepareFunc func(conn *sqlite.Conn) error
+
+func stepAndReset(stmt *sqlite.Stmt) error {
+	if _, err := stmt.Step(); err != nil {
+		return err
+	}
+	return stmt.Reset()
+}
