@@ -5,6 +5,7 @@ package sqlitemigration_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -82,4 +83,25 @@ func Example() {
 	// Output:
 	// table foo
 	// view  bar
+}
+
+// This example constructs a schema from a set of SQL files in a directory named
+// schema01.sql, schema02.sql, etc.
+func ExampleSchema() {
+	schema := sqlitemigration.Schema{
+		// Replace with a random int32 application ID for your application.
+		// Sample command to generate:
+		// echo -n '0x' && head -c 4 /dev/urandom | xxd -p
+		AppID: 1, // DO NOT USE, SEE ABOVE!
+	}
+	for i := 1; ; i++ {
+		migration, err := ioutil.ReadFile(fmt.Sprintf("schema%02d.sql", i))
+		if errors.Is(err, os.ErrNotExist) {
+			break
+		}
+		if err != nil {
+			// handle error...
+		}
+		schema.Migrations = append(schema.Migrations, string(migration))
+	}
 }
