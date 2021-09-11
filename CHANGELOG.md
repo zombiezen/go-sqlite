@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 [Unreleased]: https://github.com/zombiezen/go-sqlite/compare/v0.7.1...main
 
+## [0.7.2][] - 2021-09-11
+
+[0.7.2]: https://github.com/zombiezen/go-sqlite/releases/tag/v0.7.2
+
+### Fixed
+
+- Updated `modernc.org/sqlite` dependency to a released version instead of a
+  prerelease
+
 ## [0.7.1][] - 2021-09-09
 
 [0.7.1]: https://github.com/zombiezen/go-sqlite/releases/tag/v0.7.1
