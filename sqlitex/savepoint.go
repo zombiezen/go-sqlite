@@ -142,3 +142,113 @@ func savepoint(conn *sqlite.Conn, name string) (releaseFn func(*error), err erro
 	}
 	return releaseFn, nil
 }
+
+// Transaction creates a DEFERRED SQLite transaction.
+//
+// On success Transaction returns an endFn that will call either
+// COMMIT or ROLLBACK depending on whether the parameter *error
+// points to a nil or non-nil error. This is designed to be deferred.
+//
+// https://www.sqlite.org/lang_transaction.html
+func Transaction(conn *sqlite.Conn) (endFn func(*error)) {
+	endFn, err := transaction(conn, "DEFERRED")
+	if err != nil {
+		if sqlite.ErrCode(err) == sqlite.ResultInterrupt {
+			return func(errp *error) {
+				if *errp == nil {
+					*errp = err
+				}
+			}
+		}
+		panic(err)
+	}
+	return endFn
+}
+
+// ImmediateTransaction creates an IMMEDIATE SQLite transaction.
+//
+// On success ImmediateTransaction returns an endFn that will call either
+// COMMIT or ROLLBACK depending on whether the parameter *error
+// points to a nil or non-nil error. This is designed to be deferred.
+//
+// https://www.sqlite.org/lang_transaction.html
+func ImmediateTransaction(conn *sqlite.Conn) (endFn func(*error), err error) {
+	endFn, err = transaction(conn, "IMMEDIATE")
+	if err != nil {
+		return func(*error) {}, err
+	}
+	return endFn, nil
+}
+
+// ExclusiveTransaction creates an EXCLUSIVE SQLite transaction.
+//
+// On success ImmediateTransaction returns an endFn that will call either
+// COMMIT or ROLLBACK depending on whether the parameter *error
+// points to a nil or non-nil error. This is designed to be deferred.
+//
+// https://www.sqlite.org/lang_transaction.html
+func ExclusiveTransaction(conn *sqlite.Conn) (endFn func(*error), err error) {
+	endFn, err = transaction(conn, "EXCLUSIVE")
+	if err != nil {
+		return func(*error) {}, err
+	}
+	return endFn, nil
+}
+
+func transaction(conn *sqlite.Conn, mode string) (endFn func(*error), err error) {
+	if err := Exec(conn, "BEGIN "+mode+";", nil); err != nil {
+		return nil, err
+	}
+	endFn = func(errp *error) {
+		recoverP := recover()
+
+		// If a query was interrupted or if a user exec'd COMMIT or
+		// ROLLBACK, then everything was already rolled back
+		// automatically, thus returning the connection to autocommit
+		// mode.
+		if conn.AutocommitEnabled() {
+			// There is nothing to rollback.
+			if recoverP != nil {
+				panic(recoverP)
+			}
+			return
+		}
+
+		if *errp == nil && recoverP == nil {
+			// Success path. Commit the transaction.
+			*errp = Exec(conn, "COMMIT;", nil)
+			if *errp == nil {
+				return
+			}
+			// Possible interrupt. Fall through to the error path.
+			if conn.AutocommitEnabled() {
+				// There is nothing to rollback.
+				if recoverP != nil {
+					panic(recoverP)
+				}
+				return
+			}
+		}
+
+		orig := ""
+		if *errp != nil {
+			orig = (*errp).Error() + "\n\t"
+		}
+
+		// Error path.
+
+		// Always run ROLLBACK even if the connection has been interrupted.
+		oldDoneCh := conn.SetInterrupt(nil)
+		defer conn.SetInterrupt(oldDoneCh)
+
+		err := Exec(conn, "ROLLBACK;", nil)
+		if err != nil {
+			panic(orig + err.Error())
+		}
+
+		if recoverP != nil {
+			panic(recoverP)
+		}
+	}
+	return endFn, nil
+}

@@ -421,3 +421,58 @@ func TestBusySnapshot(t *testing.T) {
 		t.Fatalf("after savepoint want SQLITE_BUSY_SNAPSHOT, got: %v", conn0Err)
 	}
 }
+
+func TestTransactionExec(t *testing.T) {
+	conn, err := sqlite.OpenConn(":memory:", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	if err := Exec(conn, "CREATE TABLE t (c1);", nil); err != nil {
+		t.Fatal(err)
+	}
+	countFn := func() int {
+		var count int
+		fn := func(stmt *sqlite.Stmt) error {
+			count = stmt.ColumnInt(0)
+			return nil
+		}
+		if err := Exec(conn, "SELECT count(*) FROM t;", fn); err != nil {
+			t.Fatal(err)
+		}
+		return count
+	}
+	errNoSuccess := errors.New("succeed=false")
+	insert := func(succeed bool) (err error) {
+		defer Transaction(conn)(&err)
+
+		if err := Exec(conn, `INSERT INTO t VALUES ('hello');`, nil); err != nil {
+			t.Fatal(err)
+		}
+
+		if succeed {
+			return nil
+		}
+		return errNoSuccess
+	}
+
+	if err := insert(true); err != nil {
+		t.Fatal(err)
+	}
+	if got := countFn(); got != 1 {
+		t.Errorf("expecting 1 row, got %d", got)
+	}
+	if err := insert(true); err != nil {
+		t.Fatal(err)
+	}
+	if got := countFn(); got != 2 {
+		t.Errorf("expecting 2 rows, got %d", got)
+	}
+	if err := insert(false); err != errNoSuccess {
+		t.Errorf("expecting insert to fail with errNoSuccess, got %v", err)
+	}
+	if got := countFn(); got != 2 {
+		t.Errorf("expecting 2 rows, got %d", got)
+	}
+}
