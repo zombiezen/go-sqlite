@@ -402,7 +402,9 @@ func process(pkg *packages.Package, file *ast.File) []error {
 				}
 				if sig, ok := obj.Type().(*types.Signature); ok {
 					if recv := sig.Recv(); recv != nil {
-						sym.typeName = depointerType(recv.Type()).(*types.Named).Obj().Name()
+						if named, ok := depointerType(recv.Type()).(*types.Named); ok {
+							sym.typeName = named.Obj().Name()
+						}
 					}
 				}
 				if newSym := symbolRewrites[sym]; newSym.name != "" {
