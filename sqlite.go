@@ -328,7 +328,8 @@ func (c *Conn) SetBlockOnBusy() {
 		case <-t.C:
 			return true
 		case <-c.doneCh:
-			//
+			// ^ Assuming that doneCh won't be set by SetInterrupt concurrently
+			// with other operations.
 			return false
 		}
 	})
