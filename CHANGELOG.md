@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Added `SetBlockOnBusy` method to set an indefinite timeout on acquiring a lock.
+- Official support for `windows/amd64`.
 
 ### Changed
 
