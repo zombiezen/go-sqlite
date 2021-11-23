@@ -156,6 +156,8 @@ func TestSharedCacheLock(t *testing.T) {
 			t.Error(err)
 		}
 	}()
+	// TODO(someday): CI fails without this old behavior.
+	c0.SetBusyTimeout(10 * time.Second)
 
 	err = sqlitex.ExecScript(c0, `
 		DROP TABLE IF EXISTS t;
@@ -177,6 +179,8 @@ func TestSharedCacheLock(t *testing.T) {
 			t.Error(err)
 		}
 	}()
+	// TODO(someday): CI fails without this old behavior.
+	c1.SetBusyTimeout(10 * time.Second)
 
 	c0Lock := func() {
 		if _, err := c0.Prep("BEGIN;").Step(); err != nil {
