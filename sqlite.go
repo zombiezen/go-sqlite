@@ -125,10 +125,7 @@ func OpenConn(path string, flags ...OpenFlags) (*Conn, error) {
 		}
 	}
 
-	// Large timeout as Go programs should control timeouts
-	// using SetInterrupt. Documented in SetBusyTimeout.
-	c.SetBusyTimeout(10 * time.Second)
-
+	c.SetBlockOnBusy()
 	return c, nil
 }
 
@@ -212,6 +209,7 @@ func (c *Conn) Close() error {
 	c.tls.Close()
 	c.tls = nil
 	c.releaseAuthorizer()
+	busyHandlers.Delete(c.conn)
 	allConns.mu.Lock()
 	delete(allConns.table, c.conn)
 	allConns.mu.Unlock()
@@ -296,15 +294,100 @@ func (c *Conn) SetInterrupt(doneCh <-chan struct{}) (oldDoneCh <-chan struct{}) 
 }
 
 // SetBusyTimeout sets a busy handler that sleeps for up to d to acquire a lock.
+// Passing a non-positive value will turn off all busy handlers.
 //
-// By default, a large busy timeout (10s) is set on the assumption that
-// Go programs use a context object via SetInterrupt to control timeouts.
+// By default, connections are opened with SetBlockOnBusy,
+// with the assumption that programs use SetInterrupt to control timeouts.
 //
 // https://www.sqlite.org/c3ref/busy_timeout.html
 func (c *Conn) SetBusyTimeout(d time.Duration) {
 	if c != nil {
 		lib.Xsqlite3_busy_timeout(c.tls, c.conn, int32(d/time.Millisecond))
+		busyHandlers.Delete(c.conn)
 	}
+}
+
+// SetBlockOnBusy sets a busy handler that waits to acquire a lock
+// until the connection is interrupted (see SetInterrupt).
+//
+// By default, connections are opened with SetBlockOnBusy,
+// with the assumption that programs use SetInterrupt to control timeouts.
+//
+// https://www.sqlite.org/c3ref/busy_handler.html
+func (c *Conn) SetBlockOnBusy() {
+	if c == nil {
+		return
+	}
+	c.setBusyHandler(func(count int) bool {
+		if count >= len(busyDelays) {
+			count = len(busyDelays) - 1
+		}
+		t := time.NewTimer(busyDelays[count])
+		defer t.Stop()
+		select {
+		case <-t.C:
+			return true
+		case <-c.doneCh:
+			//
+			return false
+		}
+	})
+}
+
+var busyDelays = [...]time.Duration{
+	1 * time.Second,
+	2 * time.Second,
+	5 * time.Second,
+	10 * time.Second,
+	15 * time.Second,
+	20 * time.Second,
+	25 * time.Second,
+	25 * time.Second,
+	25 * time.Second,
+	50 * time.Second,
+	50 * time.Second,
+	100 * time.Second,
+}
+
+var busyHandlers sync.Map // sqlite3* -> func(int) bool
+
+func (c *Conn) setBusyHandler(handler func(count int) bool) {
+	if c == nil {
+		return
+	}
+	if handler == nil {
+		lib.Xsqlite3_busy_handler(c.tls, c.conn, 0, 0)
+		busyHandlers.Delete(c.conn)
+		return
+	}
+	busyHandlers.Store(c.conn, handler)
+	// The following is a conversion from function value to uintptr.
+	// It assumes the memory representation described in https://golang.org/s/go11func.
+	//
+	// It does this by doing the following in order:
+	// 1) Create a Go struct containing a pointer to a pointer to busyHandlerCallback.
+	//    It is assumed that the pointer to busyHandlerCallback
+	//    will be stored in the read-only data section and thus will not move.
+	// 2) Convert the pointer to the Go struct to a pointer to uintptr through
+	//    unsafe.Pointer. This is permitted via Rule #1 of unsafe.Pointer.
+	// 3) Dereference the pointer to uintptr to obtain the function value as a
+	//    uintptr. This is safe as long as function values are passed as pointers.
+	xBusy := *(*uintptr)(unsafe.Pointer(&struct {
+		f func(*libc.TLS, uintptr, int32) int32
+	}{busyHandlerCallback}))
+	lib.Xsqlite3_busy_handler(c.tls, c.conn, xBusy, c.conn)
+}
+
+func busyHandlerCallback(tls *libc.TLS, pArg uintptr, count int32) int32 {
+	val, _ := busyHandlers.Load(pArg)
+	if val == nil {
+		return 0
+	}
+	f := val.(func(int) bool)
+	if !f(int(count)) {
+		return 0
+	}
+	return 1
 }
 
 func (c *Conn) interrupted() error {

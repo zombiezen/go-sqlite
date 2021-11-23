@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 [Unreleased]: https://github.com/zombiezen/go-sqlite/compare/v0.8.0...main
 
+## [Unreleased][]
+
+### Added
+
+- Added `SetBlockOnBusy` method to set an indefinite timeout on acquiring a lock.
+
+### Changed
+
+- `OpenConn` calls `SetBlockOnBusy` on new connections
+  instead of `SetBusyTimeout(10 * time.Second)`.
+
 ## [0.8.0][] - 2021-11-07
 
 Version 0.8 adds new transaction functions to `sqlitex`.

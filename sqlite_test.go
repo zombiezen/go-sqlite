@@ -716,6 +716,43 @@ func TestBusyTimeout(t *testing.T) {
 	<-done
 }
 
+func TestBlockOnBusy(t *testing.T) {
+	dir := t.TempDir()
+	db := filepath.Join(dir, "busytest.db")
+	const flags = sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenWAL
+
+	conn0, err := sqlite.OpenConn(db, flags)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := conn0.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	conn1, err := sqlite.OpenConn(db, flags)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := conn1.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	if _, err := conn0.Prep("BEGIN EXCLUSIVE;").Step(); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	conn1.SetInterrupt(ctx.Done())
+	_, err = conn1.Prep("BEGIN EXCLUSIVE;").Step()
+	cancel()
+	if code := sqlite.ErrCode(err).ToPrimary(); code != sqlite.ResultBusy {
+		t.Errorf("Concurrent transaction error: %v (code=%v); want code=%v", err, code, sqlite.ResultBusy)
+	}
+}
+
 func TestColumnIndex(t *testing.T) {
 	c, err := sqlite.OpenConn(":memory:", 0)
 	if err != nil {
