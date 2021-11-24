@@ -41,6 +41,7 @@ type ExecOptions struct {
 	// ResultFunc is called for each result row. If ResultFunc returns an error
 	// then iteration ceases and Exec returns the error value.
 	ResultFunc func(stmt *sqlite.Stmt) error
+	Checked    bool
 }
 
 // Exec executes an SQLite query.
@@ -91,14 +92,27 @@ type ExecOptions struct {
 //		// handle err
 //	}
 func Exec(conn *sqlite.Conn, query string, resultFn func(stmt *sqlite.Stmt) error, args ...interface{}) error {
+	return ExecOptions{
+		Args:       args,
+		ResultFunc: resultFn,
+	}.Do(conn, query)
+}
+
+func ExecChecked(conn *sqlite.Conn, query string, resultFn func(stmt *sqlite.Stmt) error, args ...interface{}) error {
+	return ExecOptions{
+		Args:       args,
+		ResultFunc: resultFn,
+		Checked:    true,
+	}.Do(conn, query)
+}
+
+// A regular query exec with all the Options available.
+func (me ExecOptions) Do(conn *sqlite.Conn, query string) error {
 	stmt, err := conn.Prepare(query)
 	if err != nil {
 		return annotateErr(err)
 	}
-	err = exec(stmt, &ExecOptions{
-		Args:       args,
-		ResultFunc: resultFn,
-	})
+	err = exec(stmt, &me)
 	resetErr := stmt.Reset()
 	if err == nil {
 		err = resetErr
@@ -200,12 +214,41 @@ func PrepareTransientFS(conn *sqlite.Conn, fsys fs.FS, filename string) (*sqlite
 }
 
 func exec(stmt *sqlite.Stmt, opts *ExecOptions) (err error) {
+	// True for each parameter that's set. Nil if checking is not in use. Bind parameters are
+	// 1-indexed, so the offsets here are shifted down one.
+	var paramSet []bool
+	onSet := func(index int) {
+		// Shift to paramSet's offset
+		index--
+		const rangePassthrough = true
+		if rangePassthrough {
+			if index >= len(paramSet) {
+				// sqlite should return SQLITE_RANGE for this
+				return
+			}
+		} else {
+			// Parameter checking is not enabled
+			if paramSet == nil {
+				return
+			}
+		}
+		paramSet[index] = true
+	}
+	if opts != nil && opts.Checked || true {
+		paramSet = make([]bool, stmt.BindParamCount())
+	}
 	if opts != nil {
 		for i, arg := range opts.Args {
 			setArg(stmt, i+1, reflect.ValueOf(arg))
+			onSet(i + 1)
 		}
-		if err := setNamed(stmt, opts.Named); err != nil {
+		if err := setNamed(stmt, opts.Named, onSet); err != nil {
 			return err
+		}
+	}
+	for i, set := range paramSet {
+		if !set {
+			return fmt.Errorf("parameter %v not set", i+1)
 		}
 	}
 	for {
@@ -248,7 +291,7 @@ func setArg(stmt *sqlite.Stmt, i int, v reflect.Value) {
 	}
 }
 
-func setNamed(stmt *sqlite.Stmt, args map[string]interface{}) error {
+func setNamed(stmt *sqlite.Stmt, args map[string]interface{}, onSet func(index int)) error {
 	if len(args) == 0 {
 		return nil
 	}
@@ -262,6 +305,7 @@ func setNamed(stmt *sqlite.Stmt, args map[string]interface{}) error {
 			return fmt.Errorf("missing parameter %s", name)
 		}
 		setArg(stmt, i, reflect.ValueOf(arg))
+		onSet(i)
 	}
 	return nil
 }
