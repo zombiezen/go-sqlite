@@ -6,8 +6,6 @@ package sqlitemigration
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
-	"os"
 	"path/filepath"
 	"testing"
 
@@ -17,15 +15,6 @@ import (
 )
 
 func TestPool(t *testing.T) {
-	dir, err := ioutil.TempDir("", "sqlitemigration_test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		if err := os.RemoveAll(dir); err != nil {
-			t.Errorf("cleaning up: %v", err)
-		}
-	}()
 	ctx := context.Background()
 
 	t.Run("NoMigrations", func(t *testing.T) {
@@ -33,7 +22,7 @@ func TestPool(t *testing.T) {
 			AppID: 0xedbeef,
 		}
 		state := new(eventRecorder)
-		pool := NewPool(filepath.Join(dir, "no-migrations.db"), schema, Options{
+		pool := NewPool(filepath.Join(t.TempDir(), "no-migrations.db"), schema, Options{
 			Flags:          sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
 			OnStartMigrate: state.startMigrateFunc(),
 			OnReady:        state.readyFunc(),
@@ -78,6 +67,7 @@ func TestPool(t *testing.T) {
 	t.Run("DoesNotMigrateDifferentDatabase", func(t *testing.T) {
 		// Create another.db with a single table.
 		// Don't set application ID.
+		dir := t.TempDir()
 		err := withTestConn(dir, "another.db", func(conn *sqlite.Conn) error {
 			err := sqlitex.ExecTransient(conn, `create table foo ( id integer primary key not null );`, nil)
 			if err != nil {
@@ -153,7 +143,7 @@ func TestPool(t *testing.T) {
 			},
 		}
 		state := new(eventRecorder)
-		pool := NewPool(filepath.Join(dir, "one-migration.db"), schema, Options{
+		pool := NewPool(filepath.Join(t.TempDir(), "one-migration.db"), schema, Options{
 			Flags:          sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
 			OnStartMigrate: state.startMigrateFunc(),
 			OnReady:        state.readyFunc(),
@@ -195,7 +185,7 @@ func TestPool(t *testing.T) {
 			},
 		}
 		state := new(eventRecorder)
-		pool := NewPool(filepath.Join(dir, "two-migrations.db"), schema, Options{
+		pool := NewPool(filepath.Join(t.TempDir(), "two-migrations.db"), schema, Options{
 			Flags:          sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
 			OnStartMigrate: state.startMigrateFunc(),
 			OnReady:        state.readyFunc(),
@@ -240,6 +230,7 @@ func TestPool(t *testing.T) {
 			},
 		}
 		state := new(eventRecorder)
+		dir := t.TempDir()
 		pool := NewPool(filepath.Join(dir, "partial-migration.db"), schema, Options{
 			Flags:          sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
 			OnStartMigrate: state.startMigrateFunc(),
@@ -296,6 +287,7 @@ func TestPool(t *testing.T) {
 		}
 
 		// Run 1
+		dir := t.TempDir()
 		pool := NewPool(filepath.Join(dir, "migrations-dont-repeat.db"), schema, Options{
 			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
 		})
@@ -348,6 +340,7 @@ func TestPool(t *testing.T) {
 		}
 
 		// Run 1
+		dir := t.TempDir()
 		pool := NewPool(filepath.Join(dir, "incremental-migration.db"), schema1, Options{
 			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
 		})
@@ -403,6 +396,7 @@ func TestPool(t *testing.T) {
 		}
 
 		// Run 1
+		dir := t.TempDir()
 		pool := NewPool(filepath.Join(dir, "repeatable-incremental.db"), schema1, Options{
 			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
 		})
@@ -457,6 +451,7 @@ func TestPool(t *testing.T) {
 		}
 
 		// Run 1
+		dir := t.TempDir()
 		pool := NewPool(filepath.Join(dir, "repeatable-sameversion.db"), schema1, Options{
 			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
 		})
@@ -511,6 +506,7 @@ func TestPool(t *testing.T) {
 		}
 
 		// Run 1
+		dir := t.TempDir()
 		pool := NewPool(filepath.Join(dir, "future-version.db"), schema1, Options{
 			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
 		})
@@ -557,7 +553,7 @@ func TestPool(t *testing.T) {
 				insert into foo (id) values (theAnswer());`,
 			},
 		}
-		pool := NewPool(filepath.Join(dir, "custom-schema-function.db"), schema, Options{
+		pool := NewPool(filepath.Join(t.TempDir(), "custom-schema-function.db"), schema, Options{
 			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
 			PrepareConn: func(conn *sqlite.Conn) error {
 				return conn.CreateFunction("theAnswer", &sqlite.FunctionImpl{
@@ -596,7 +592,7 @@ func TestPool(t *testing.T) {
 		schema := Schema{
 			AppID: 0xedbeef,
 		}
-		pool := NewPool(filepath.Join(dir, "custom-get-function.db"), schema, Options{
+		pool := NewPool(filepath.Join(t.TempDir(), "custom-get-function.db"), schema, Options{
 			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
 			PrepareConn: func(conn *sqlite.Conn) error {
 				return conn.CreateFunction("theAnswer", &sqlite.FunctionImpl{
@@ -641,7 +637,7 @@ func TestPool(t *testing.T) {
 				{DisableForeignKeys: true},
 			},
 		}
-		pool := NewPool(filepath.Join(dir, "disable-foreign-keys.db"), schema, Options{
+		pool := NewPool(filepath.Join(t.TempDir(), "disable-foreign-keys.db"), schema, Options{
 			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
 			PrepareConn: func(conn *sqlite.Conn) error {
 				return sqlitex.ExecTransient(conn, "PRAGMA foreign_keys = on;", nil)
