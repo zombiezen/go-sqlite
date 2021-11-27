@@ -29,7 +29,7 @@ import (
 	"zombiezen.com/go/sqlite"
 )
 
-func TestExec(t *testing.T) {
+func TestSavepointExec(t *testing.T) {
 	conn, err := sqlite.OpenConn(":memory:", 0)
 	if err != nil {
 		t.Fatal(err)
@@ -84,7 +84,7 @@ func TestExec(t *testing.T) {
 	}
 }
 
-func TestPanic(t *testing.T) {
+func TestSavepointPanic(t *testing.T) {
 	conn, err := sqlite.OpenConn(":memory:", 0)
 	if err != nil {
 		t.Fatal(err)
@@ -136,7 +136,7 @@ func doPanic(conn *sqlite.Conn) (err error) {
 	return nil
 }
 
-func TestDone(t *testing.T) {
+func TestSavepointDone(t *testing.T) {
 	doneCh := make(chan struct{})
 
 	conn, err := sqlite.OpenConn(":memory:", 0)
@@ -155,7 +155,7 @@ func TestDone(t *testing.T) {
 	}
 }
 
-func TestReleaseTx(t *testing.T) {
+func TestSavepointReleaseTx(t *testing.T) {
 	conn1, err := sqlite.OpenConn("file::memory:?mode=memory&cache=shared", 0)
 	if err != nil {
 		t.Fatal(err)
@@ -214,7 +214,7 @@ func TestReleaseTx(t *testing.T) {
 	}
 }
 
-func TestInterruptRollback(t *testing.T) {
+func TestSavepointInterruptRollback(t *testing.T) {
 	conn, err := sqlite.OpenConn("file::memory:?mode=memory&cache=shared", 0)
 	if err != nil {
 		t.Fatal(err)
@@ -314,7 +314,7 @@ from product join naturals
 ;
 `
 
-func TestInterruptRollbackLongQuery(t *testing.T) {
+func TestSavepointInterruptRollbackLongQuery(t *testing.T) {
 	conn, err := sqlite.OpenConn("file::memory:?mode=memory&cache=shared", 0)
 	if err != nil {
 		t.Fatal(err)
@@ -368,7 +368,7 @@ func TestInterruptRollbackLongQuery(t *testing.T) {
 	}
 }
 
-func TestBusySnapshot(t *testing.T) {
+func TestSavepointBusySnapshot(t *testing.T) {
 	dir, err := ioutil.TempDir("", "sqlitex-test-")
 	if err != nil {
 		t.Fatal(err)

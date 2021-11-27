@@ -12,7 +12,7 @@ import (
 func main() {
 	var conn *sqlite.Conn
 	var file *sqlitefile2.File
-	sqlitex.ExecScriptFS(conn, nil, "foo.sql", &sqlitex.ExecOptions{
+	sqlitex.ExecuteScriptFS(conn, nil, "foo.sql", &sqlitex.ExecOptions{
 		Args: []interface{}{1, "foo"},
 	})
 	sqlitex.Exec(conn, `SELECT 1;`, nil)

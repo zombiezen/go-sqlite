@@ -13,11 +13,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Added `SetBlockOnBusy` method to set an indefinite timeout on acquiring a lock.
 - Official support for `windows/amd64`.
+- `sqlitex` has three new functions —
+  `Execute`, `ExecuteTransient`, and `ExecuteScript` —
+  that take in an `ExecOptions` struct.
+  ([#5](https://github.com/zombiezen/go-sqlite/issues/5))
+- New method `sqlite.ResultCode.ToError` to create error values.
 
 ### Changed
 
 - `OpenConn` calls `SetBlockOnBusy` on new connections
   instead of `SetBusyTimeout(10 * time.Second)`.
+- The `sqlitex.Execute*` family of functions now verify that
+  the arguments passed match the SQL parameters.
+  ([#31](https://github.com/zombiezen/go-sqlite/issues/31))
+
+### Deprecated
+
+- `sqlitex.ExecFS` has been renamed to `sqlitex.ExecuteFS`,
+  `sqlitex.ExecTransientFS` has been renamed to `sqlitex.ExecuteTransientFS`,
+  and `sqlitex.ExecScriptFS` has been renamed to `sqlitex.ExecuteScriptFS`
+  for consistency with the new `Execute` functions.
+  Aliases remain in this version, but will be removed in the next version.
+  Use `zombiezen-sqlite-migrate` to clean up existing references.
+- `sqlitex.Exec` and `sqlitex.ExecTransient`
+  have been marked deprecated because they do not perform the argument checks
+  that the `Execute` functions now perform.
+  These functions will remain into 1.0 and beyond for compatibility,
+  but should not be used in new applications.
 
 ### Fixed
 
@@ -27,7 +49,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Previously, the repeatable migration could fail independently of the final transaction,
   which would mean that a subsequent migration run would not trigger a retry of the repeatable transaction,
   but report success.
-- `sqlitemigration` will no longer skip applying the repeatable migration if the final migration is empty.
+- `sqlitemigration` will no longer skip applying the repeatable migration
+  if the final migration is empty.
 
 ## [0.8.0][] - 2021-11-07
 

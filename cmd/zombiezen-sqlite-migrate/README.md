@@ -40,6 +40,9 @@ changes beyond changing the import paths to preserve semantics.
 -  `sqlitex.File` and `sqlitex.Buffer` are in `zombiezen.com/go/sqlite/sqlitefile`
    instead of `zombiezen.com/go/sqlite/sqlitex`.
 -  The **session API** has some symbols renamed for clarity.
+- `sqlitex.ExecFS` will rename to `sqlitex.ExecuteFS`,
+  `sqlitex.ExecTransientFS` will rename to `sqlitex.ExecuteTransientFS`,
+  and `sqlitex.ExecScriptFS` will rename to `sqlitex.ExecuteScriptFS`.
 
 [result code]: https://sqlite.org/rescode.html
 

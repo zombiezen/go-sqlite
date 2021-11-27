@@ -26,6 +26,10 @@ func TestProcess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	sqliteModule, err := skeletonModule("zombiezen.com/go/sqlite")
+	if err != nil {
+		t.Fatal(err)
+	}
 	rootDir := filepath.Join("testdata", "TestProcess")
 	testRunContents, err := os.ReadDir(rootDir)
 	if err != nil {
@@ -53,6 +57,7 @@ func TestProcess(t *testing.T) {
 			e := packagestest.Export(t, packagestest.Modules, []packagestest.Module{
 				crawshawModule,
 				bassModule,
+				sqliteModule,
 				{
 					Name: mainPkgPath,
 					Files: map[string]interface{}{

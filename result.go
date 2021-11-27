@@ -330,15 +330,23 @@ func (code ResultCode) Message() string {
 	return libc.GoString(cstr)
 }
 
+// ToError converts an error code into an error
+// for which ErrCode(code.ToError()) == code.
+// If the code indicates success, ToError returns nil.
+func (code ResultCode) ToError() error {
+	if code.IsSuccess() {
+		return nil
+	}
+	return sqliteError{code}
+}
+
 type sqliteError struct {
 	code ResultCode
 }
 
 func reserr(res ResultCode) error {
-	if res.IsSuccess() {
-		return nil
-	}
-	return sqliteError{res}
+	// TODO(soon): Inline.
+	return res.ToError()
 }
 
 func (e sqliteError) Error() string {

@@ -30,16 +30,39 @@ import (
 
 // ExecOptions is the set of optional arguments executing a statement.
 type ExecOptions struct {
-	// Args is the set of positional arguments to bind to the statement. The first
-	// element in the slice is ?1. See https://sqlite.org/lang_expr.html for more
-	// details.
+	// Args is the set of positional arguments to bind to the statement.
+	// The first element in the slice is ?1.
+	// See https://sqlite.org/lang_expr.html for more details.
+	//
+	// Basic reflection on Args is used to map:
+	//
+	//	integers to BindInt64
+	//	floats   to BindFloat
+	//	[]byte   to BindBytes
+	//	string   to BindText
+	//	bool     to BindBool
+	//
+	// All other kinds are printed using fmt.Sprint(v) and passed to BindText.
 	Args []interface{}
+
 	// Named is the set of named arguments to bind to the statement. Keys must
 	// start with ':', '@', or '$'. See https://sqlite.org/lang_expr.html for more
 	// details.
+	//
+	// Basic reflection on Named is used to map:
+	//
+	//	integers to BindInt64
+	//	floats   to BindFloat
+	//	[]byte   to BindBytes
+	//	string   to BindText
+	//	bool     to BindBool
+	//
+	// All other kinds are printed using fmt.Sprint(v) and passed to BindText.
 	Named map[string]interface{}
-	// ResultFunc is called for each result row. If ResultFunc returns an error
-	// then iteration ceases and Exec returns the error value.
+
+	// ResultFunc is called for each result row.
+	// If ResultFunc returns an error then iteration ceases
+	// and the execution function returns the error value.
 	ResultFunc func(stmt *sqlite.Stmt) error
 }
 
@@ -70,32 +93,14 @@ type ExecOptions struct {
 // As Exec is implemented using Conn.Prepare, subsequent calls to Exec
 // with the same statement will reuse the cached statement object.
 //
-// Typical use:
-//
-//	conn := dbpool.Get()
-//	defer dbpool.Put(conn)
-//
-//	if err := sqlitex.Exec(conn, "INSERT INTO t (a, b, c, d) VALUES (?, ?, ?, ?);", nil, "a1", 1, 42, 1); err != nil {
-//		// handle err
-//	}
-//
-//	var a []string
-//	var b []int64
-//	fn := func(stmt *sqlite.Stmt) error {
-//		a = append(a, stmt.ColumnText(0))
-//		b = append(b, stmt.ColumnInt64(1))
-//		return nil
-//	}
-//	err := sqlutil.Exec(conn, "SELECT a, b FROM t WHERE c = ? AND d = ?;", fn, 42, 1)
-//	if err != nil {
-//		// handle err
-//	}
+// Deprecated: Use Execute.
+// Exec skips some argument checks for compatibility with crawshaw.io/sqlite.
 func Exec(conn *sqlite.Conn, query string, resultFn func(stmt *sqlite.Stmt) error, args ...interface{}) error {
 	stmt, err := conn.Prepare(query)
 	if err != nil {
 		return annotateErr(err)
 	}
-	err = exec(stmt, &ExecOptions{
+	err = exec(stmt, 0, &ExecOptions{
 		Args:       args,
 		ResultFunc: resultFn,
 	})
@@ -106,10 +111,36 @@ func Exec(conn *sqlite.Conn, query string, resultFn func(stmt *sqlite.Stmt) erro
 	return err
 }
 
-// ExecFS executes the single statement in the given SQL file.
-// ExecFS is implemented using Conn.Prepare, so subsequent calls to ExecFS with the
-// same statement will reuse the cached statement object.
+// Execute executes an SQLite query.
+//
+// As Execute is implemented using Conn.Prepare,
+// subsequent calls to Execute with the same statement
+// will reuse the cached statement object.
+func Execute(conn *sqlite.Conn, query string, opts *ExecOptions) error {
+	stmt, err := conn.Prepare(query)
+	if err != nil {
+		return annotateErr(err)
+	}
+	err = exec(stmt, forbidMissing|forbidExtra, opts)
+	resetErr := stmt.Reset()
+	if err == nil {
+		err = resetErr
+	}
+	return err
+}
+
+// ExecFS is an alias for ExecuteFS.
+//
+// Deprecated: Call ExecuteFS directly.
 func ExecFS(conn *sqlite.Conn, fsys fs.FS, filename string, opts *ExecOptions) error {
+	return ExecuteFS(conn, fsys, filename, opts)
+}
+
+// ExecuteFS executes the single statement in the given SQL file.
+// ExecuteFS is implemented using Conn.Prepare,
+// so subsequent calls to ExecuteFS with the same statement
+// will reuse the cached statement object.
+func ExecuteFS(conn *sqlite.Conn, fsys fs.FS, filename string, opts *ExecOptions) error {
 	query, err := readString(fsys, filename)
 	if err != nil {
 		return fmt.Errorf("exec: %w", err)
@@ -119,7 +150,7 @@ func ExecFS(conn *sqlite.Conn, fsys fs.FS, filename string, opts *ExecOptions) e
 	if err != nil {
 		return fmt.Errorf("exec %s: %w", filename, err)
 	}
-	err = exec(stmt, opts)
+	err = exec(stmt, forbidMissing|forbidExtra, opts)
 	resetErr := stmt.Reset()
 	if err != nil {
 		// Don't strip the error query: we already do this inside exec.
@@ -131,11 +162,12 @@ func ExecFS(conn *sqlite.Conn, fsys fs.FS, filename string, opts *ExecOptions) e
 	return nil
 }
 
-// ExecTransient executes an SQLite query without caching the
-// underlying query.
+// ExecTransient executes an SQLite query without caching the underlying query.
 // The interface is exactly the same as Exec.
-//
 // It is the spiritual equivalent of sqlite3_exec.
+//
+// Deprecated: Use ExecuteTransient.
+// ExecTransient skips some argument checks for compatibility with crawshaw.io/sqlite.
 func ExecTransient(conn *sqlite.Conn, query string, resultFn func(stmt *sqlite.Stmt) error, args ...interface{}) (err error) {
 	var stmt *sqlite.Stmt
 	var trailingBytes int
@@ -152,15 +184,44 @@ func ExecTransient(conn *sqlite.Conn, query string, resultFn func(stmt *sqlite.S
 	if trailingBytes != 0 {
 		return fmt.Errorf("sqlitex.Exec: query %q has trailing bytes", query)
 	}
-	return exec(stmt, &ExecOptions{
+	return exec(stmt, 0, &ExecOptions{
 		Args:       args,
 		ResultFunc: resultFn,
 	})
 }
 
-// ExecTransientFS executes the single statement in the given SQL file without
-// caching the underlying query.
+// ExecuteTransient executes an SQLite query without caching the underlying query.
+// It is the spiritual equivalent of sqlite3_exec:
+// https://www.sqlite.org/c3ref/exec.html
+func ExecuteTransient(conn *sqlite.Conn, query string, opts *ExecOptions) (err error) {
+	var stmt *sqlite.Stmt
+	var trailingBytes int
+	stmt, trailingBytes, err = conn.PrepareTransient(query)
+	if err != nil {
+		return annotateErr(err)
+	}
+	defer func() {
+		ferr := stmt.Finalize()
+		if err == nil {
+			err = ferr
+		}
+	}()
+	if trailingBytes != 0 {
+		return fmt.Errorf("sqlitex.Exec: query %q has trailing bytes", query)
+	}
+	return exec(stmt, forbidMissing|forbidExtra, opts)
+}
+
+// ExecTransientFS is an alias for ExecuteTransientFS.
+//
+// Deprecated: Call ExecuteTransientFS directly.
 func ExecTransientFS(conn *sqlite.Conn, fsys fs.FS, filename string, opts *ExecOptions) error {
+	return ExecuteTransientFS(conn, fsys, filename, opts)
+}
+
+// ExecuteTransientFS executes the single statement in the given SQL file without
+// caching the underlying query.
+func ExecuteTransientFS(conn *sqlite.Conn, fsys fs.FS, filename string, opts *ExecOptions) error {
 	query, err := readString(fsys, filename)
 	if err != nil {
 		return fmt.Errorf("exec: %w", err)
@@ -171,7 +232,7 @@ func ExecTransientFS(conn *sqlite.Conn, fsys fs.FS, filename string, opts *ExecO
 		return fmt.Errorf("exec %s: %w", filename, err)
 	}
 	defer stmt.Finalize()
-	err = exec(stmt, opts)
+	err = exec(stmt, forbidMissing|forbidExtra, opts)
 	resetErr := stmt.Reset()
 	if err != nil {
 		// Don't strip the error query: we already do this inside exec.
@@ -199,14 +260,34 @@ func PrepareTransientFS(conn *sqlite.Conn, fsys fs.FS, filename string) (*sqlite
 	return stmt, nil
 }
 
-func exec(stmt *sqlite.Stmt, opts *ExecOptions) (err error) {
+const (
+	forbidMissing = 1 << iota
+	forbidExtra
+)
+
+func exec(stmt *sqlite.Stmt, flags uint8, opts *ExecOptions) (err error) {
+	paramCount := stmt.BindParamCount()
+	provided := newBitset(paramCount)
 	if opts != nil {
+		if len(opts.Args) > paramCount {
+			return fmt.Errorf("sqlitex.Exec: %w (len(Args) > BindParamCount(); %d > %d)",
+				sqlite.ResultRange.ToError(), len(opts.Args), paramCount)
+		}
 		for i, arg := range opts.Args {
+			provided.set(i)
 			setArg(stmt, i+1, reflect.ValueOf(arg))
 		}
-		if err := setNamed(stmt, opts.Named); err != nil {
+		if err := setNamed(stmt, provided, flags, opts.Named); err != nil {
 			return err
 		}
+	}
+	if flags&forbidMissing != 0 && !provided.hasAll(paramCount) {
+		i := provided.firstMissing() + 1
+		name := stmt.BindParamName(i)
+		if name == "" {
+			name = fmt.Sprintf("?%d", i)
+		}
+		return fmt.Errorf("sqlitex.Exec: missing argument for %s", name)
 	}
 	for {
 		hasRow, err := stmt.Step()
@@ -248,9 +329,16 @@ func setArg(stmt *sqlite.Stmt, i int, v reflect.Value) {
 	}
 }
 
-func setNamed(stmt *sqlite.Stmt, args map[string]interface{}) error {
+func setNamed(stmt *sqlite.Stmt, provided bitset, flags uint8, args map[string]interface{}) error {
 	if len(args) == 0 {
 		return nil
+	}
+	var unused map[string]struct{}
+	if flags&forbidExtra != 0 {
+		unused = make(map[string]struct{}, len(args))
+		for k := range args {
+			unused[k] = struct{}{}
+		}
 	}
 	for i, count := 1, stmt.BindParamCount(); i <= count; i++ {
 		name := stmt.BindParamName(i)
@@ -259,9 +347,18 @@ func setNamed(stmt *sqlite.Stmt, args map[string]interface{}) error {
 		}
 		arg, present := args[name]
 		if !present {
-			return fmt.Errorf("missing parameter %s", name)
+			if flags&forbidMissing != 0 {
+				// TODO(maybe): Check provided as well?
+				return fmt.Errorf("missing parameter %s", name)
+			}
+			continue
 		}
+		delete(unused, name)
+		provided.set(i - 1)
 		setArg(stmt, i, reflect.ValueOf(arg))
+	}
+	if len(unused) > 0 {
+		return fmt.Errorf("%w: unknown argument %s", sqlite.ResultRange.ToError(), minStringInSet(unused))
 	}
 	return nil
 }
@@ -276,16 +373,29 @@ func annotateErr(err error) error {
 	// 	}
 	// 	return err
 	// }
-	return fmt.Errorf("sqlutil.Exec: %w", err)
+	return fmt.Errorf("sqlitex.Exec: %w", err)
 }
 
 // ExecScript executes a script of SQL statements.
-//
+// It is the same as calling ExecuteScript without options.
+func ExecScript(conn *sqlite.Conn, queries string) (err error) {
+	return ExecuteScript(conn, queries, nil)
+}
+
+// ExecuteScript executes a script of SQL statements.
 // The script is wrapped in a SAVEPOINT transaction,
 // which is rolled back on any error.
-func ExecScript(conn *sqlite.Conn, queries string) (err error) {
+//
+// opts.ResultFunc is ignored.
+func ExecuteScript(conn *sqlite.Conn, queries string, opts *ExecOptions) (err error) {
 	defer Save(conn)(&err)
 
+	unused := make(map[string]struct{})
+	if opts != nil {
+		for k := range opts.Named {
+			unused[k] = struct{}{}
+		}
+	}
 	for {
 		queries = strings.TrimSpace(queries)
 		if queries == "" {
@@ -297,45 +407,105 @@ func ExecScript(conn *sqlite.Conn, queries string) (err error) {
 		if err != nil {
 			return err
 		}
+		for i, n := 1, stmt.BindParamCount(); i <= n; i++ {
+			if name := stmt.BindParamName(i); name != "" {
+				delete(unused, name)
+			}
+		}
 		usedBytes := len(queries) - trailingBytes
 		queries = queries[usedBytes:]
-		_, err := stmt.Step()
+		err = exec(stmt, forbidMissing, opts)
 		stmt.Finalize()
 		if err != nil {
 			return err
 		}
 	}
+	if len(unused) > 0 {
+		return fmt.Errorf("%w: unknown argument %s", sqlite.ResultRange.ToError(), minStringInSet(unused))
+	}
 	return nil
 }
 
-// ExecScriptFS executes a script of SQL statements from a file.
+// ExecScriptFS is an alias for ExecuteScriptFS.
 //
-// The script is wrapped in a SAVEPOINT transaction, which is rolled back on
-// any error.
+// Deprecated: Call ExecuteScriptFS directly.
 func ExecScriptFS(conn *sqlite.Conn, fsys fs.FS, filename string, opts *ExecOptions) (err error) {
+	return ExecuteScriptFS(conn, fsys, filename, opts)
+}
+
+// ExecuteScriptFS executes a script of SQL statements from a file.
+// The script is wrapped in a SAVEPOINT transaction,
+// which is rolled back on any error.
+func ExecuteScriptFS(conn *sqlite.Conn, fsys fs.FS, filename string, opts *ExecOptions) (err error) {
 	queries, err := readString(fsys, filename)
 	if err != nil {
 		return fmt.Errorf("exec: %w", err)
 	}
+	if err := ExecuteScript(conn, queries, opts); err != nil {
+		return fmt.Errorf("exec %s: %w", filename, err)
+	}
+	return nil
+}
 
-	defer Save(conn)(&err)
-	for {
-		queries = strings.TrimSpace(queries)
-		if queries == "" {
-			return nil
-		}
-		stmt, trailingBytes, err := conn.PrepareTransient(queries)
-		if err != nil {
-			return fmt.Errorf("exec %s: %w", filename, err)
-		}
-		usedBytes := len(queries) - trailingBytes
-		queries = queries[usedBytes:]
-		err = exec(stmt, opts)
-		stmt.Finalize()
-		if err != nil {
-			return fmt.Errorf("exec %s: %w", filename, err)
+type bitset []uint64
+
+func newBitset(n int) bitset {
+	return make([]uint64, (n+63)/64)
+}
+
+// hasAll reports whether the bitset is a superset of [0, n).
+func (bs bitset) hasAll(n int) bool {
+	nbytes := (n + 63) / 64
+	if len(bs) < nbytes {
+		return false
+	}
+	fullBytes := n / 64
+	for _, b := range bs[:fullBytes] {
+		if b != ^uint64(0) {
+			return false
 		}
 	}
+	if fullBytes == nbytes {
+		return true
+	}
+	mask := uint64(1)<<(n%64) - 1
+	return bs[nbytes-1]&mask == mask
+}
+
+func (bs bitset) firstMissing() int {
+	for i, b := range bs {
+		if b == ^uint64(0) {
+			continue
+		}
+		for j := 0; j < 64; j++ {
+			if b&(1<<j) == 0 {
+				return i*64 + j
+			}
+		}
+	}
+	return len(bs) * 64
+}
+
+func (bs bitset) set(n int) {
+	bs[n/64] |= 1 << (n % 64)
+}
+
+func (bs bitset) String() string {
+	sb := new(strings.Builder)
+	for i := len(bs) - 1; i >= 0; i-- {
+		fmt.Fprintf(sb, "%08b", bs[i])
+	}
+	return sb.String()
+}
+
+func minStringInSet(set map[string]struct{}) string {
+	min := ""
+	for k := range set {
+		if min == "" || k < min {
+			min = k
+		}
+	}
+	return min
 }
 
 func readString(fsys fs.FS, filename string) (string, error) {

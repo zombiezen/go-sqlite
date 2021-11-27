@@ -143,10 +143,15 @@ var symbolRewrites = map[symbol]symbol{
 
 	// bass sqlitefile
 	{bassFile, "", "ExecOptions"}:      {zombiezenX, "", "ExecOptions"},
-	{bassFile, "", "Exec"}:             {zombiezenX, "", "ExecFS"},
-	{bassFile, "", "ExecTransient"}:    {zombiezenX, "", "ExecTransientFS"},
+	{bassFile, "", "Exec"}:             {zombiezenX, "", "ExecuteFS"},
+	{bassFile, "", "ExecTransient"}:    {zombiezenX, "", "ExecuteTransientFS"},
 	{bassFile, "", "PrepareTransient"}: {zombiezenX, "", "PrepareTransientFS"},
-	{bassFile, "", "ExecScript"}:       {zombiezenX, "", "ExecScriptFS"},
+	{bassFile, "", "ExecScript"}:       {zombiezenX, "", "ExecuteScriptFS"},
+
+	// Exec -> Execute for older versions of zombiezen.
+	{zombiezenX, "", "ExecFS"}:          {zombiezenX, "", "ExecuteFS"},
+	{zombiezenX, "", "ExecTransientFS"}: {zombiezenX, "", "ExecuteTransientFS"},
+	{zombiezenX, "", "ExecScriptFS"}:    {zombiezenX, "", "ExecuteScriptFS"},
 
 	// OpenFlags
 	{crawshaw, "", "SQLITE_OPEN_READONLY"}:     {zombiezen, "", "OpenReadOnly"},
