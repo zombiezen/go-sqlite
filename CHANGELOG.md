@@ -19,6 +19,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `OpenConn` calls `SetBlockOnBusy` on new connections
   instead of `SetBusyTimeout(10 * time.Second)`.
 
+### Fixed
+
+- `sqlitemigration.Schema.RepeatableMigration` is now run as part of the final transaction.
+  This ensures that the repeatable migration for migration `N` has executed
+  if and only if `user_version == N`.
+  Previously, the repeatable migration could fail independently of the final transaction,
+  which would mean that a subsequent migration run would not trigger a retry of the repeatable transaction,
+  but report success.
+- `sqlitemigration` will no longer skip applying the repeatable migration if the final migration is empty.
+
 ## [0.8.0][] - 2021-11-07
 
 Version 0.8 adds new transaction functions to `sqlitex`.

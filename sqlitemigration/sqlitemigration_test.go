@@ -318,7 +318,7 @@ func TestPool(t *testing.T) {
 
 		// Verify that the first migration is applied and that none of the second
 		// migration is applied.
-		withTestConn(dir, "partial-migration.db", func(conn *sqlite.Conn) error {
+		err = withTestConn(dir, "partial-migration.db", func(conn *sqlite.Conn) error {
 			var got int
 			err = sqlitex.ExecTransient(conn, "select id from foo order by id;", func(stmt *sqlite.Stmt) error {
 				got = stmt.ColumnInt(0)
@@ -332,6 +332,9 @@ func TestPool(t *testing.T) {
 			}
 			return nil
 		})
+		if err != nil {
+			t.Fatal(err)
+		}
 	})
 
 	t.Run("MigrationsDontRepeat", func(t *testing.T) {
@@ -488,6 +491,125 @@ func TestPool(t *testing.T) {
 		pool.Put(conn)
 		if err := pool.Close(); err != nil {
 			t.Error("pool.Close:", err)
+		}
+	})
+
+	t.Run("Repeatable/IncrementalMigrationEmpty", func(t *testing.T) {
+		schema1 := Schema{
+			AppID: 0xedbeef,
+			Migrations: []string{
+				`create table foo ( id integer primary key not null );`,
+			},
+		}
+		schema2 := Schema{
+			AppID: 0xedbeef,
+			Migrations: []string{
+				`create table foo ( id integer primary key not null );`,
+				"",
+			},
+			RepeatableMigration: `insert into foo values (333);`,
+		}
+
+		// Run 1
+		dir := t.TempDir()
+		pool := NewPool(filepath.Join(dir, "repeatable-incremental.db"), schema1, Options{
+			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
+		})
+		conn, err := pool.Get(ctx)
+		if err != nil {
+			pool.Close()
+			t.Fatal(err)
+		}
+		pool.Put(conn)
+		if err := pool.Close(); err != nil {
+			t.Error("pool.Close:", err)
+		}
+
+		// Run 2
+		pool = NewPool(filepath.Join(dir, "repeatable-incremental.db"), schema2, Options{
+			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
+		})
+		conn, err = pool.Get(ctx)
+		if err != nil {
+			pool.Close()
+			t.Fatal(err)
+		}
+		var got []int
+		err = sqlitex.ExecTransient(conn, "select id from foo order by id;", func(stmt *sqlite.Stmt) error {
+			got = append(got, stmt.ColumnInt(0))
+			return nil
+		})
+		if err != nil {
+			t.Error(err)
+		} else if !cmp.Equal(got, []int{333}) {
+			t.Errorf("select id = %v; want [333]", got)
+		}
+		pool.Put(conn)
+		if err := pool.Close(); err != nil {
+			t.Error("pool.Close:", err)
+		}
+	})
+
+	t.Run("Repeatable/IncrementalMigrationFailure", func(t *testing.T) {
+		schema1 := Schema{
+			AppID: 0xedbeef,
+			Migrations: []string{
+				`create table foo ( id integer primary key not null );`,
+			},
+		}
+		schema2 := Schema{
+			AppID: 0xedbeef,
+			Migrations: []string{
+				`create table foo ( id integer primary key not null );`,
+				`insert into foo values (42);`,
+			},
+			RepeatableMigration: `insert into bar values (333);`,
+		}
+
+		// Run 1
+		dbPath := filepath.Join(t.TempDir(), "repeatable-fail.db")
+		pool := NewPool(dbPath, schema1, Options{
+			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
+		})
+		conn, err := pool.Get(ctx)
+		if err != nil {
+			pool.Close()
+			t.Fatal(err)
+		}
+		pool.Put(conn)
+		if err := pool.Close(); err != nil {
+			t.Error("pool.Close:", err)
+		}
+
+		// Run 2
+		pool = NewPool(dbPath, schema2, Options{
+			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
+		})
+		conn, err = pool.Get(ctx)
+		if err == nil {
+			pool.Put(conn)
+			t.Error("Second migration did not fail")
+		}
+		if err := pool.Close(); err != nil {
+			t.Error("pool.Close:", err)
+		}
+
+		err = withTestConn(filepath.Dir(dbPath), filepath.Base(dbPath), func(conn *sqlite.Conn) error {
+			var got []int
+			err = sqlitex.ExecTransient(conn, "select id from foo order by id;", func(stmt *sqlite.Stmt) error {
+				got = append(got, stmt.ColumnInt(0))
+				return nil
+			})
+			if err != nil {
+				return err
+			}
+			if len(got) != 0 {
+				return fmt.Errorf("select id = %v; want []", got)
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
 		}
 	})
 

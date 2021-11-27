@@ -37,7 +37,7 @@ type Schema struct {
 	AppID int32
 
 	// RepeatableMigration is a SQL script to run if any migrations ran.
-	// The script is wrapped in a transaction which is rolled back on any error.
+	// The script is run as part of the final migration's transaction.
 	RepeatableMigration string
 }
 
@@ -332,12 +332,8 @@ func migrateDB(ctx context.Context, conn *sqlite.Conn, schema Schema, onStart Si
 		return fmt.Errorf("migrate database: %w", err)
 	}
 	defer commitStmt.Finalize()
-	migratedLast := false
 	for ; schemaVersion < len(schema.Migrations); schemaVersion++ {
 		migration := schema.Migrations[schemaVersion]
-		if migration == "" {
-			continue
-		}
 		disableFKs := foreignKeysEnabled &&
 			schemaVersion < len(schema.MigrationOptions) &&
 			schema.MigrationOptions[schemaVersion] != nil &&
@@ -372,23 +368,21 @@ func migrateDB(ctx context.Context, conn *sqlite.Conn, schema Schema, onStart Si
 			rollback(conn)
 			return fmt.Errorf("migrate database: apply migrations[%d]: %w", schemaVersion, err)
 		}
+		if schemaVersion == len(schema.Migrations)-1 && schema.RepeatableMigration != "" {
+			if err := sqlitex.ExecScript(conn, schema.RepeatableMigration); err != nil {
+				rollback(conn)
+				return fmt.Errorf("migrate database: apply repeatable migration: %w", err)
+			}
+		}
 
 		if err := stepAndReset(commitStmt); err != nil {
 			rollback(conn)
 			return fmt.Errorf("migrate database: apply migrations[%d]: %w", schemaVersion, err)
 		}
-		if schemaVersion == len(schema.Migrations)-1 {
-			migratedLast = true
-		}
 		if disableFKs {
 			if err := stepAndReset(fkOnStmt); err != nil {
 				return fmt.Errorf("migrate database: reenable foreign keys: %w", err)
 			}
-		}
-	}
-	if migratedLast && schema.RepeatableMigration != "" {
-		if err := sqlitex.ExecScript(conn, schema.RepeatableMigration); err != nil {
-			return fmt.Errorf("migrate database: apply repeatable migration: %w", err)
 		}
 	}
 	return nil
