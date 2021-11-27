@@ -20,23 +20,24 @@ import (
 
 // Schema defines the migrations for the application.
 type Schema struct {
-	// AppID is saved to the database file to identify the application.
-	// It's used to prevent opening database files for a different
-	// application. It should be a positive number, but should not change
-	// between runs of the same program. A common way of setting this is with
-	// a compile-time constant that was randomly generated.
-	AppID int32
-
-	// Migrations is a list of SQL scripts to run. Each script is wrapped in a
-	// transaction which is rolled back on any error.
+	// Migrations is a list of SQL scripts to run.
+	// Each script is wrapped in a transaction which is rolled back on any error.
 	Migrations []string
 
-	// MigrationOptions specifies options for each migration. len(MigrationOptions)
-	// must not be greater than len(Migrations).
+	// MigrationOptions specifies options for each migration.
+	// len(MigrationOptions) must not be greater than len(Migrations).
 	MigrationOptions []*MigrationOptions
 
-	// RepeatableMigration is a SQL script to run if any migrations ran. The
-	// script is wrapped in a transaction which is rolled back on any error.
+	// AppID is saved to the database file to identify the application.
+	// It's an optional measure to prevent opening database files for a different application.
+	// It must not change between runs of the same program.
+	//
+	// A common way of setting this is with a compile-time constant that was randomly generated.
+	// `head -c 4 /dev/urandom | xxd -p` can generate such an ID.
+	AppID int32
+
+	// RepeatableMigration is a SQL script to run if any migrations ran.
+	// The script is wrapped in a transaction which is rolled back on any error.
 	RepeatableMigration string
 }
 

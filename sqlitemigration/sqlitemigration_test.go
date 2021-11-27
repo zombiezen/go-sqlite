@@ -135,6 +135,62 @@ func TestPool(t *testing.T) {
 		}
 	})
 
+	t.Run("ZeroAppID", func(t *testing.T) {
+		const dbName = "zeroid.db"
+		schema1 := Schema{
+			AppID: 0,
+			Migrations: []string{
+				`create table foo ( id integer primary key not null );`,
+			},
+		}
+		schema2 := Schema{
+			AppID: 0,
+			Migrations: []string{
+				`create table foo ( id integer primary key not null );`,
+				`insert into foo values (42);`,
+			},
+		}
+
+		// Run 1
+		dir := t.TempDir()
+		pool := NewPool(filepath.Join(dir, dbName), schema1, Options{
+			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
+		})
+		conn, err := pool.Get(ctx)
+		if err != nil {
+			pool.Close()
+			t.Fatal(err)
+		}
+		pool.Put(conn)
+		if err := pool.Close(); err != nil {
+			t.Error("pool.Close:", err)
+		}
+
+		// Run 2
+		pool = NewPool(filepath.Join(dir, dbName), schema2, Options{
+			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
+		})
+		conn, err = pool.Get(ctx)
+		if err != nil {
+			pool.Close()
+			t.Fatal(err)
+		}
+		var got int
+		err = sqlitex.ExecTransient(conn, "select id from foo order by id;", func(stmt *sqlite.Stmt) error {
+			got = stmt.ColumnInt(0)
+			return nil
+		})
+		if err != nil {
+			t.Error(err)
+		} else if got != 42 {
+			t.Errorf("select id = %d; want 42", got)
+		}
+		pool.Put(conn)
+		if err := pool.Close(); err != nil {
+			t.Error("pool.Close:", err)
+		}
+	})
+
 	t.Run("OneMigration", func(t *testing.T) {
 		schema := Schema{
 			AppID: 0xedbeef,

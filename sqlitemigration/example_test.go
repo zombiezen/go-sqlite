@@ -19,11 +19,6 @@ import (
 
 func Example() {
 	schema := sqlitemigration.Schema{
-		// Replace with a random int32 application ID for your application.
-		// Sample command to generate:
-		// echo -n '0x' && head -c 4 /dev/urandom | xxd -p
-		AppID: 1, // DO NOT USE, SEE ABOVE!
-
 		// Each element of the Migrations slice is applied in sequence. When you
 		// want to change the schema, add a new SQL script to this list.
 		//
@@ -88,12 +83,7 @@ func Example() {
 // This example constructs a schema from a set of SQL files in a directory named
 // schema01.sql, schema02.sql, etc.
 func ExampleSchema() {
-	schema := sqlitemigration.Schema{
-		// Replace with a random int32 application ID for your application.
-		// Sample command to generate:
-		// echo -n '0x' && head -c 4 /dev/urandom | xxd -p
-		AppID: 1, // DO NOT USE, SEE ABOVE!
-	}
+	var schema sqlitemigration.Schema
 	for i := 1; ; i++ {
 		migration, err := ioutil.ReadFile(fmt.Sprintf("schema%02d.sql", i))
 		if errors.Is(err, os.ErrNotExist) {
