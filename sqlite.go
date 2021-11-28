@@ -250,12 +250,6 @@ func (c *Conn) CheckReset() string {
 // Subsequent uses of the connection will return SQLITE_INTERRUPT
 // errors until doneCh is reset with a subsequent call to SetInterrupt.
 //
-// Typically, doneCh is provided by the Done method on a context.Context.
-// For example, a timeout can be associated with a connection session:
-//
-//	ctx := context.WithTimeout(context.Background(), 100*time.Millisecond)
-//	conn.SetInterrupt(ctx.Done())
-//
 // Any busy statements at the time SetInterrupt is called will be reset.
 //
 // SetInterrupt returns the old doneCh assigned to the connection.

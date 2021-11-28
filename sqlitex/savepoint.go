@@ -31,14 +31,6 @@ import (
 // RELEASE or ROLLBACK depending on whether the parameter *error
 // points to a nil or non-nil error. This is designed to be deferred.
 //
-// Example:
-//
-//	func doWork(conn *sqlite.Conn) (err error) {
-//		defer sqlitex.Save(conn)(&err)
-//
-//		// ... do work in the transaction
-//	}
-//
 // https://www.sqlite.org/lang_savepoint.html
 func Save(conn *sqlite.Conn) (releaseFn func(*error)) {
 	name := "sqlitex.Save" // safe as names can be reused

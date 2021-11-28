@@ -4,6 +4,7 @@
 package sqlitex_test
 
 import (
+	"context"
 	"fmt"
 
 	"zombiezen.com/go/sqlite"
@@ -44,4 +45,35 @@ func ExampleExecute() {
 	fmt.Println(a, b)
 	// Output:
 	// [a1] [1]
+}
+
+func ExampleSave() {
+	doWork := func(conn *sqlite.Conn) (err error) {
+		defer sqlitex.Save(conn)(&err)
+
+		// ... do work in the transaction
+		return nil
+	}
+	_ = doWork
+}
+
+func ExamplePool() {
+	// Open a pool.
+	dbpool, err := sqlitex.Open("foo.db", 0, 10)
+	if err != nil {
+		// handle err
+	}
+	defer func() {
+		if err := dbpool.Close(); err != nil {
+			// handle err
+		}
+	}()
+
+	// While handling a request:
+	ctx := context.TODO()
+	conn := dbpool.Get(ctx)
+	if conn == nil {
+		// handle err
+	}
+	defer dbpool.Put(conn)
 }

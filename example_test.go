@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"time"
 
 	"zombiezen.com/go/sqlite"
 	"zombiezen.com/go/sqlite/sqlitex"
@@ -77,7 +78,8 @@ func ExampleConn_SetInterrupt() {
 
 	// You can use the Done() channel from a context to set deadlines and timeouts
 	// on queries.
-	ctx := context.TODO()
+	ctx, cancel := context.WithTimeout(context.TODO(), 100*time.Millisecond)
+	defer cancel()
 	conn.SetInterrupt(ctx.Done())
 }
 

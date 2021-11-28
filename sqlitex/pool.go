@@ -26,23 +26,7 @@ import (
 )
 
 // Pool is a pool of SQLite connections.
-//
 // It is safe for use by multiple goroutines concurrently.
-//
-// Typically, a goroutine that needs to use an SQLite *Conn
-// Gets it from the pool and defers its return:
-//
-//	conn := dbpool.Get(nil)
-//	defer dbpool.Put(conn)
-//
-// As Get may block, a context can be used to return if a task
-// is cancelled. In this case the Conn returned will be nil:
-//
-//	conn := dbpool.Get(ctx)
-//	if conn == nil {
-//		return context.Canceled
-//	}
-//	defer dbpool.Put(conn)
 type Pool struct {
 	free   chan *sqlite.Conn
 	closed chan struct{}
