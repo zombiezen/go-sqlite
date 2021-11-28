@@ -301,9 +301,11 @@ func migrateDB(ctx context.Context, conn *sqlite.Conn, schema Schema, onStart Si
 	onStart.call()
 
 	var foreignKeysEnabled bool
-	err = sqlitex.ExecTransient(conn, "PRAGMA foreign_keys;", func(stmt *sqlite.Stmt) error {
-		foreignKeysEnabled = stmt.ColumnInt(0) != 0
-		return nil
+	err = sqlitex.ExecuteTransient(conn, "PRAGMA foreign_keys;", &sqlitex.ExecOptions{
+		ResultFunc: func(stmt *sqlite.Stmt) error {
+			foreignKeysEnabled = stmt.ColumnInt(0) != 0
+			return nil
+		},
 	})
 	if err != nil {
 		return fmt.Errorf("migrate database: %w", err)
@@ -392,24 +394,28 @@ func rollback(conn *sqlite.Conn) {
 	if conn.AutocommitEnabled() {
 		return
 	}
-	sqlitex.ExecTransient(conn, "ROLLBACK;", nil)
+	sqlitex.ExecuteTransient(conn, "ROLLBACK;", nil)
 }
 
 func ensureAppID(conn *sqlite.Conn, wantAppID int32, userVersionStmt *sqlite.Stmt) (schemaVersion int, err error) {
 	defer sqlitex.Save(conn)(&err)
 
 	var hasSchema bool
-	err = sqlitex.ExecTransient(conn, "VALUES ((SELECT COUNT(*) FROM sqlite_master) > 0);", func(stmt *sqlite.Stmt) error {
-		hasSchema = stmt.ColumnInt(0) != 0
-		return nil
+	err = sqlitex.ExecuteTransient(conn, "VALUES ((SELECT COUNT(*) FROM sqlite_master) > 0);", &sqlitex.ExecOptions{
+		ResultFunc: func(stmt *sqlite.Stmt) error {
+			hasSchema = stmt.ColumnInt(0) != 0
+			return nil
+		},
 	})
 	if err != nil {
 		return 0, err
 	}
 	var dbAppID int32
-	err = sqlitex.ExecTransient(conn, "PRAGMA application_id;", func(stmt *sqlite.Stmt) error {
-		dbAppID = stmt.ColumnInt32(0)
-		return nil
+	err = sqlitex.ExecuteTransient(conn, "PRAGMA application_id;", &sqlitex.ExecOptions{
+		ResultFunc: func(stmt *sqlite.Stmt) error {
+			dbAppID = stmt.ColumnInt32(0)
+			return nil
+		},
 	})
 	if err != nil {
 		return 0, err
@@ -426,7 +432,7 @@ func ensureAppID(conn *sqlite.Conn, wantAppID int32, userVersionStmt *sqlite.Stm
 	}
 	// Using Sprintf because PRAGMAs don't permit arbitrary expressions, and thus
 	// don't permit using parameter substitution.
-	err = sqlitex.ExecTransient(conn, fmt.Sprintf("PRAGMA application_id = %d;", wantAppID), nil)
+	err = sqlitex.ExecuteTransient(conn, fmt.Sprintf("PRAGMA application_id = %d;", wantAppID), nil)
 	if err != nil {
 		return 0, err
 	}

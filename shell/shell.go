@@ -63,9 +63,11 @@ func Run(conn *sqlite.Conn) {
 			}
 			switch word := line[1:wordEnd]; word {
 			case "schema":
-				err := sqlitex.ExecTransient(conn, `SELECT sql FROM sqlite_master;`, func(stmt *sqlite.Stmt) error {
-					fmt.Println(stmt.ColumnText(0) + ";")
-					return nil
+				err := sqlitex.ExecuteTransient(conn, `SELECT sql FROM sqlite_master;`, &sqlitex.ExecOptions{
+					ResultFunc: func(stmt *sqlite.Stmt) error {
+						fmt.Println(stmt.ColumnText(0) + ";")
+						return nil
+					},
 				})
 				if err != nil {
 					fmt.Fprintln(os.Stderr, err)

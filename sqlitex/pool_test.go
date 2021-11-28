@@ -191,7 +191,7 @@ func TestSharedCacheLock(t *testing.T) {
 		}
 	}
 	c0Unlock := func() {
-		if err := sqlitex.Exec(c0, "COMMIT;", nil); err != nil {
+		if err := sqlitex.Execute(c0, "COMMIT;", nil); err != nil {
 			t.Fatal(err)
 		}
 	}

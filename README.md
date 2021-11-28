@@ -70,9 +70,11 @@ if err != nil {
 defer conn.Close()
 
 // Execute a query.
-err = sqlitex.ExecTransient(conn, "SELECT 'hello, world';", func(stmt *sqlite.Stmt) error {
-  fmt.Println(stmt.ColumnText(0))
-  return nil
+err = sqlitex.ExecuteTransient(conn, "SELECT 'hello, world';", &sqlitex.ExecOptions{
+  ResultFunc: func(stmt *sqlite.Stmt) error {
+    fmt.Println(stmt.ColumnText(0))
+    return nil
+  },
 })
 if err != nil {
   return err

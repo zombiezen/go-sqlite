@@ -50,7 +50,7 @@ func Example() {
 		Flags: sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
 		PrepareConn: func(conn *sqlite.Conn) error {
 			// Enable foreign keys. See https://sqlite.org/foreignkeys.html
-			return sqlitex.ExecTransient(conn, "PRAGMA foreign_keys = ON;", nil)
+			return sqlitex.ExecuteTransient(conn, "PRAGMA foreign_keys = ON;", nil)
 		},
 		OnError: func(e error) {
 			log.Println(e)
@@ -67,9 +67,11 @@ func Example() {
 
 	// Print the list of schema objects created.
 	const listSchemaQuery = `SELECT "type", "name" FROM sqlite_master ORDER BY 1, 2;`
-	err = sqlitex.ExecTransient(conn, listSchemaQuery, func(stmt *sqlite.Stmt) error {
-		fmt.Printf("%-5s %s\n", stmt.ColumnText(0), stmt.ColumnText(1))
-		return nil
+	err = sqlitex.ExecuteTransient(conn, listSchemaQuery, &sqlitex.ExecOptions{
+		ResultFunc: func(stmt *sqlite.Stmt) error {
+			fmt.Printf("%-5s %s\n", stmt.ColumnText(0), stmt.ColumnText(1))
+			return nil
+		},
 	})
 	if err != nil {
 		// handle error

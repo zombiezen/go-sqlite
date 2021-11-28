@@ -17,16 +17,18 @@ import (
 
 func Example() {
 	// Open an in-memory database.
-	conn, err := sqlite.OpenConn(":memory:", sqlite.OpenReadWrite)
+	conn, err := sqlite.OpenConn(":memory:", sqlite.OpenReadWrite|sqlite.OpenNoMutex)
 	if err != nil {
 		// handle error
 	}
 	defer conn.Close()
 
 	// Execute a query.
-	err = sqlitex.ExecTransient(conn, "SELECT 'hello, world';", func(stmt *sqlite.Stmt) error {
-		fmt.Println(stmt.ColumnText(0))
-		return nil
+	err = sqlitex.ExecuteTransient(conn, "SELECT 'hello, world';", &sqlitex.ExecOptions{
+		ResultFunc: func(stmt *sqlite.Stmt) error {
+			fmt.Println(stmt.ColumnText(0))
+			return nil
+		},
 	})
 	if err != nil {
 		// handle error
@@ -171,9 +173,11 @@ func ExampleContext_AuxData() {
 
 	const query = `WITH test_strings(i, s) AS (VALUES (1, 'foo'), (2, 'bar')) ` +
 		`SELECT i, regexp('fo+', s) FROM test_strings ORDER BY i;`
-	err = sqlitex.ExecTransient(conn, query, func(stmt *sqlite.Stmt) error {
-		fmt.Printf("Match %d: %t\n", stmt.ColumnInt(0), stmt.ColumnInt(1) != 0)
-		return nil
+	err = sqlitex.ExecuteTransient(conn, query, &sqlitex.ExecOptions{
+		ResultFunc: func(stmt *sqlite.Stmt) error {
+			fmt.Printf("Match %d: %t\n", stmt.ColumnInt(0), stmt.ColumnInt(1) != 0)
+			return nil
+		},
 	})
 	if err != nil {
 		// handle error
@@ -194,18 +198,19 @@ func ExampleBlob() {
 		// handle error
 	}
 	defer conn.Close()
-	err = sqlitex.ExecTransient(conn, `CREATE TABLE blobs (myblob blob);`, nil)
+	err = sqlitex.ExecuteTransient(conn, `CREATE TABLE blobs (myblob blob);`, nil)
 	if err != nil {
 		// handle error
 	}
 
 	// Insert a new row with enough space for the data we want to insert.
 	const dataToInsert = "Hello, World!"
-	err = sqlitex.ExecTransient(
+	err = sqlitex.ExecuteTransient(
 		conn,
 		`INSERT INTO blobs (myblob) VALUES (zeroblob(?));`,
-		nil,
-		len(dataToInsert),
+		&sqlitex.ExecOptions{
+			Args: []interface{}{len(dataToInsert)},
+		},
 	)
 	if err != nil {
 		// handle error
@@ -227,10 +232,12 @@ func ExampleBlob() {
 
 	// Read back the blob.
 	var data []byte
-	err = sqlitex.ExecTransient(conn, `SELECT myblob FROM blobs;`, func(stmt *sqlite.Stmt) error {
-		data = make([]byte, stmt.ColumnLen(0))
-		stmt.ColumnBytes(0, data)
-		return nil
+	err = sqlitex.ExecuteTransient(conn, `SELECT myblob FROM blobs;`, &sqlitex.ExecOptions{
+		ResultFunc: func(stmt *sqlite.Stmt) error {
+			data = make([]byte, stmt.ColumnLen(0))
+			stmt.ColumnBytes(0, data)
+			return nil
+		},
 	})
 	if err != nil {
 		// handle error
