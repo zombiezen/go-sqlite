@@ -15,6 +15,7 @@
 //
 // SPDX-License-Identifier: ISC
 
+// Package sqlitefile provides bytes buffers backed by a temporary SQLite table.
 package sqlitefile
 
 import (
