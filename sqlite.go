@@ -95,7 +95,7 @@ func OpenConn(path string, flags ...OpenFlags) (*Conn, error) {
 		lib.SQLITE_DBCONFIG_DQS_DDL,
 		varArgs,
 	))
-	if err := reserr(res); err != nil {
+	if err := res.ToError(); err != nil {
 		// Making error opaque because it's not part of the primary connection
 		// opening and reflects an internal error.
 		return nil, fmt.Errorf("sqlite: open %q: disable double-quoted string literals: %v", path, err)
@@ -106,7 +106,7 @@ func OpenConn(path string, flags ...OpenFlags) (*Conn, error) {
 		lib.SQLITE_DBCONFIG_DQS_DML,
 		varArgs,
 	))
-	if err := reserr(res); err != nil {
+	if err := res.ToError(); err != nil {
 		// Making error opaque because it's not part of the primary connection
 		// opening and reflects an internal error.
 		return nil, fmt.Errorf("sqlite: open %q: disable double-quoted string literals: %v", path, err)
@@ -572,9 +572,9 @@ func (c *Conn) extreserr(res ResultCode) error {
 		return nil
 	}
 	if msg := libc.GoString(lib.Xsqlite3_errmsg(c.tls, c.conn)); msg != "" {
-		return fmt.Errorf("%w: %s", reserr(res), msg)
+		return fmt.Errorf("%w: %s", res.ToError(), msg)
 	}
-	return reserr(res)
+	return res.ToError()
 }
 
 // Stmt is an SQLite3 prepared statement.
@@ -617,7 +617,7 @@ func (stmt *Stmt) Finalize() error {
 	}
 	res := ResultCode(lib.Xsqlite3_finalize(stmt.conn.tls, stmt.stmt))
 	stmt.conn = nil
-	if err := reserr(res); err != nil {
+	if err := res.ToError(); err != nil {
 		return fmt.Errorf("sqlite: finalize: %w", err)
 	}
 	return nil
@@ -658,7 +658,7 @@ func (stmt *Stmt) ClearBindings() error {
 		return fmt.Errorf("sqlite: clear bindings: %w", err)
 	}
 	res := ResultCode(lib.Xsqlite3_clear_bindings(stmt.conn.tls, stmt.stmt))
-	if err := reserr(res); err != nil {
+	if err := res.ToError(); err != nil {
 		return fmt.Errorf("sqlite: clear bindings: %w", err)
 	}
 	return nil
@@ -737,7 +737,7 @@ func (stmt *Stmt) step() (bool, error) {
 			return false, nil
 		case ResultInterrupt:
 			// TODO: embed some of these errors into the stmt for zero-alloc errors?
-			return false, reserr(res)
+			return false, res.ToError()
 		default:
 			return false, stmt.conn.extreserr(res)
 		}
@@ -746,7 +746,7 @@ func (stmt *Stmt) step() (bool, error) {
 
 func (stmt *Stmt) handleBindErr(prefix string, res ResultCode) {
 	if stmt.bindErr == nil && !res.IsSuccess() {
-		stmt.bindErr = fmt.Errorf("%s: %w", prefix, reserr(res))
+		stmt.bindErr = fmt.Errorf("%s: %w", prefix, res.ToError())
 	}
 }
 
@@ -1337,7 +1337,7 @@ func (c *Conn) SetDefensive(enabled bool) error {
 		lib.SQLITE_DBCONFIG_DEFENSIVE,
 		varArgs,
 	))
-	if err := reserr(res); err != nil {
+	if err := res.ToError(); err != nil {
 		return fmt.Errorf("sqlite: set defensive=%t: %w", enabled, err)
 	}
 	return nil

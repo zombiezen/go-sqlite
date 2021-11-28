@@ -105,7 +105,7 @@ func (c *Conn) openBlob(dbn, table, column string, row int64, write bool) (_ *Bl
 		))
 		switch res {
 		case ResultLockedSharedCache:
-			if err := reserr(waitForUnlockNotify(c.tls, c.conn, c.unlockNote)); err != nil {
+			if err := waitForUnlockNotify(c.tls, c.conn, c.unlockNote).ToError(); err != nil {
 				return nil, fmt.Errorf("sqlite: open blob %q.%q: %w", table, column, err)
 			}
 			// loop
@@ -158,7 +158,7 @@ func (blob *Blob) Read(p []byte) (int, error) {
 			nn = int32(len(p))
 		}
 		res := ResultCode(lib.Xsqlite3_blob_read(blob.conn.tls, blob.blob, blob.buf, nn, blob.off))
-		if err := reserr(res); err != nil {
+		if err := res.ToError(); err != nil {
 			return fullLen - len(p), fmt.Errorf("sqlite: read blob: %w", err)
 		}
 		copy(p, blob.bufSlice()[:int(nn)])
@@ -186,7 +186,7 @@ func (blob *Blob) WriteTo(w io.Writer) (n int64, err error) {
 			buf = buf[:remaining]
 		}
 		res := ResultCode(lib.Xsqlite3_blob_read(blob.conn.tls, blob.blob, blob.buf, int32(len(buf)), blob.off))
-		if err := reserr(res); err != nil {
+		if err := res.ToError(); err != nil {
 			return n, fmt.Errorf("sqlite: read blob: %w", err)
 		}
 		nn, err := w.Write(buf)
@@ -212,7 +212,7 @@ func (blob *Blob) Write(p []byte) (int, error) {
 	for len(p) > 0 {
 		nn := copy(blob.bufSlice(), p)
 		res := ResultCode(lib.Xsqlite3_blob_write(blob.conn.tls, blob.blob, blob.buf, int32(nn), blob.off))
-		if err := reserr(res); err != nil {
+		if err := res.ToError(); err != nil {
 			return fullLen - len(p), fmt.Errorf("sqlite: write blob: %w", err)
 		}
 		p = p[nn:]
@@ -234,7 +234,7 @@ func (blob *Blob) WriteString(s string) (int, error) {
 	for len(s) > 0 {
 		nn := copy(blob.bufSlice(), s)
 		res := ResultCode(lib.Xsqlite3_blob_write(blob.conn.tls, blob.blob, blob.buf, int32(nn), blob.off))
-		if err := reserr(res); err != nil {
+		if err := res.ToError(); err != nil {
 			return fullLen - len(s), fmt.Errorf("sqlite: write blob: %w", err)
 		}
 		s = s[nn:]
@@ -255,7 +255,7 @@ func (blob *Blob) ReadFrom(r io.Reader) (n int64, err error) {
 		nn, err := r.Read(blob.bufSlice())
 		if nn > 0 {
 			res := ResultCode(lib.Xsqlite3_blob_write(blob.conn.tls, blob.blob, blob.buf, int32(nn), blob.off))
-			if err := reserr(res); err != nil {
+			if err := res.ToError(); err != nil {
 				return n, fmt.Errorf("sqlite: write blob: %w", err)
 			}
 			n += int64(nn)
@@ -308,7 +308,7 @@ func (blob *Blob) Close() error {
 	blob.buf = 0
 	res := ResultCode(lib.Xsqlite3_blob_close(blob.conn.tls, blob.blob))
 	blob.blob = 0
-	if err := reserr(res); err != nil {
+	if err := res.ToError(); err != nil {
 		return fmt.Errorf("sqlite: close blob: %w", err)
 	}
 	return nil

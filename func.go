@@ -527,7 +527,7 @@ func (c *Conn) CreateFunction(name string, impl *FunctionImpl) error {
 		finalfn,
 		destroyfn,
 	))
-	if err := reserr(res); err != nil {
+	if err := res.ToError(); err != nil {
 		return fmt.Errorf("sqlite: create function %s: %w", name, err)
 	}
 	return nil

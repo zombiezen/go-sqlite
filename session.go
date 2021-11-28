@@ -66,7 +66,7 @@ func (c *Conn) CreateSession(db string) (*Session, error) {
 	}
 	defer libc.Xfree(c.tls, doublePtr)
 	res := ResultCode(lib.Xsqlite3session_create(c.tls, c.conn, cdb, doublePtr))
-	if err := reserr(res); err != nil {
+	if err := res.ToError(); err != nil {
 		return nil, fmt.Errorf("sqlite: create session: %w", err)
 	}
 	s := &Session{
@@ -130,7 +130,7 @@ func (s *Session) Attach(tableName string) error {
 		defer libc.Xfree(s.tls, ctable)
 	}
 	res := ResultCode(lib.Xsqlite3session_attach(s.tls, s.ptr, ctable))
-	if err := reserr(res); err != nil {
+	if err := res.ToError(); err != nil {
 		return fmt.Errorf("sqlite: attach table %q to session: %w", tableName, err)
 	}
 	return nil
@@ -160,7 +160,7 @@ func (s *Session) Diff(srcDB, tableName string) error {
 	}
 	defer libc.Xfree(s.tls, ctable)
 	res := ResultCode(lib.Xsqlite3session_diff(s.tls, s.ptr, csrcDB, ctable, errMsgPtr))
-	if err := reserr(res); err != nil {
+	if err := res.ToError(); err != nil {
 		cerrMsg := *(*uintptr)(unsafe.Pointer(errMsgPtr))
 		if cerrMsg == 0 {
 			return fmt.Errorf("sqlite: diff table %q: %w", tableName, err)
@@ -182,7 +182,7 @@ func (s *Session) WriteChangeset(w io.Writer) error {
 	xOutput, pOut := registerStreamWriter(w)
 	defer unregisterStreamWriter(pOut)
 	res := ResultCode(lib.Xsqlite3session_changeset_strm(s.tls, s.ptr, xOutput, pOut))
-	if err := reserr(res); err != nil {
+	if err := res.ToError(); err != nil {
 		return fmt.Errorf("sqlite: write session changeset: %w", err)
 	}
 	return nil
@@ -198,7 +198,7 @@ func (s *Session) WritePatchset(w io.Writer) error {
 	xOutput, pOut := registerStreamWriter(w)
 	defer unregisterStreamWriter(pOut)
 	res := ResultCode(lib.Xsqlite3session_patchset_strm(s.tls, s.ptr, xOutput, pOut))
-	if err := reserr(res); err != nil {
+	if err := res.ToError(); err != nil {
 		return fmt.Errorf("sqlite: write session patchset: %w", err)
 	}
 	return nil
@@ -258,7 +258,7 @@ func (c *Conn) ApplyChangeset(r io.Reader, filterFn func(tableName string) bool,
 		f func(*libc.TLS, uintptr, int32, uintptr) int32
 	}{changesetApplyConflict}))
 	res := ResultCode(lib.Xsqlite3changeset_apply_strm(c.tls, c.conn, xInput, pIn, xFilter, xConflict, pCtx))
-	if err := reserr(res); err != nil {
+	if err := res.ToError(); err != nil {
 		return fmt.Errorf("sqlite: apply changeset: %w", err)
 	}
 	return nil
@@ -329,7 +329,7 @@ func InvertChangeset(w io.Writer, r io.Reader) error {
 	xOutput, pOut := registerStreamWriter(w)
 	defer unregisterStreamWriter(pOut)
 	res := ResultCode(lib.Xsqlite3changeset_invert_strm(tls, xInput, pIn, xOutput, pOut))
-	if err := reserr(res); err != nil {
+	if err := res.ToError(); err != nil {
 		return fmt.Errorf("sqlite: invert changeset: %w", err)
 	}
 	return nil
@@ -359,7 +359,7 @@ func NewChangesetIterator(r io.Reader) (*ChangesetIterator, error) {
 	}
 	defer libc.Xfree(tls, pp)
 	res := ResultCode(lib.Xsqlite3changeset_start_strm(tls, pp, xInput, pIn))
-	if err := reserr(res); err != nil {
+	if err := res.ToError(); err != nil {
 		unregisterStreamReader(pIn)
 		tls.Close()
 		return nil, fmt.Errorf("sqlite: start changeset iterator: %w", err)
@@ -394,7 +394,7 @@ func (iter *ChangesetIterator) Close() error {
 		unregisterStreamReader(iter.pIn)
 	}
 	iter.pIn = 0
-	if err := reserr(res); err != nil {
+	if err := res.ToError(); err != nil {
 		return fmt.Errorf("sqlite: finalize changeset iterator: %w", err)
 	}
 	return nil
@@ -413,7 +413,7 @@ func (iter *ChangesetIterator) Next() (rowReturned bool, err error) {
 	case ResultDone:
 		return false, nil
 	default:
-		return false, fmt.Errorf("sqlite: iterate changeset: %w", reserr(res))
+		return false, fmt.Errorf("sqlite: iterate changeset: %w", res.ToError())
 	}
 }
 
@@ -459,7 +459,7 @@ func (iter *ChangesetIterator) Operation() (*ChangesetOperation, error) {
 	}
 	defer libc.Xfree(iter.tls, pbIndirect)
 	res := ResultCode(lib.Xsqlite3changeset_op(iter.tls, iter.ptr, pzTab, pnCol, pOp, pbIndirect))
-	if err := reserr(res); err != nil {
+	if err := res.ToError(); err != nil {
 		return nil, fmt.Errorf("sqlite: changeset iterator operation: %w", err)
 	}
 	return &ChangesetOperation{
@@ -484,7 +484,7 @@ func (iter *ChangesetIterator) Old(col int) (Value, error) {
 	}
 	defer libc.Xfree(iter.tls, ppValue)
 	res := ResultCode(lib.Xsqlite3changeset_old(iter.tls, iter.ptr, int32(col), ppValue))
-	if err := reserr(res); err != nil {
+	if err := res.ToError(); err != nil {
 		return Value{}, fmt.Errorf("sqlite: get changeset iterator value: %w", err)
 	}
 	return Value{
@@ -507,7 +507,7 @@ func (iter *ChangesetIterator) New(col int) (Value, error) {
 	}
 	defer libc.Xfree(iter.tls, ppValue)
 	res := ResultCode(lib.Xsqlite3changeset_new(iter.tls, iter.ptr, int32(col), ppValue))
-	if err := reserr(res); err != nil {
+	if err := res.ToError(); err != nil {
 		return Value{}, fmt.Errorf("sqlite: get changeset iterator value: %w", err)
 	}
 	return Value{
@@ -531,7 +531,7 @@ func (iter *ChangesetIterator) ConflictValue(col int) (Value, error) {
 	}
 	defer libc.Xfree(iter.tls, ppValue)
 	res := ResultCode(lib.Xsqlite3changeset_conflict(iter.tls, iter.ptr, int32(col), ppValue))
-	if err := reserr(res); err != nil {
+	if err := res.ToError(); err != nil {
 		return Value{}, fmt.Errorf("sqlite: get changeset iterator value: %w", err)
 	}
 	return Value{
@@ -550,7 +550,7 @@ func (iter *ChangesetIterator) ForeignKeyConflicts() (int, error) {
 	}
 	defer libc.Xfree(iter.tls, pnOut)
 	res := ResultCode(lib.Xsqlite3changeset_fk_conflicts(iter.tls, iter.ptr, pnOut))
-	if err := reserr(res); err != nil {
+	if err := res.ToError(); err != nil {
 		return 0, fmt.Errorf("sqlite: get number of foreign key conflicts: %w", err)
 	}
 	return int(*(*int32)(unsafe.Pointer(pnOut))), nil
@@ -571,7 +571,7 @@ func (iter *ChangesetIterator) PrimaryKey() ([]bool, error) {
 	}
 	defer libc.Xfree(iter.tls, pnCol)
 	res := ResultCode(lib.Xsqlite3changeset_pk(iter.tls, iter.ptr, pabPK, pnCol))
-	if err := reserr(res); err != nil {
+	if err := res.ToError(); err != nil {
 		return nil, fmt.Errorf("sqlite: get primary key columns: %w", err)
 	}
 	c := libc.GoBytes(*(*uintptr)(unsafe.Pointer(pabPK)), int(*(*int32)(unsafe.Pointer(pnCol))))
@@ -595,7 +595,7 @@ func ConcatChangesets(w io.Writer, changeset1, changeset2 io.Reader) error {
 	xOutput, pOut := registerStreamWriter(w)
 	defer unregisterStreamWriter(pOut)
 	res := ResultCode(lib.Xsqlite3changeset_concat_strm(tls, xInput1, pIn1, xInput2, pIn2, xOutput, pOut))
-	if err := reserr(res); err != nil {
+	if err := res.ToError(); err != nil {
 		return fmt.Errorf("sqlite: concatenate changesets: %w", err)
 	}
 	return nil
@@ -638,7 +638,7 @@ func (cg *Changegroup) init() error {
 		}
 		defer libc.Xfree(cg.tls, pp)
 		res := ResultCode(lib.Xsqlite3changegroup_new(cg.tls, pp))
-		if err := reserr(res); err != nil {
+		if err := res.ToError(); err != nil {
 			cg.tls.Close()
 			cg.tls = nil
 			return fmt.Errorf("init changegroup: %w", err)
@@ -676,7 +676,7 @@ func (cg *Changegroup) Add(r io.Reader) error {
 	xInput, pIn := registerStreamReader(r)
 	defer unregisterStreamReader(pIn)
 	res := ResultCode(lib.Xsqlite3changegroup_add_strm(cg.tls, cg.ptr, xInput, pIn))
-	if err := reserr(res); err != nil {
+	if err := res.ToError(); err != nil {
 		return fmt.Errorf("sqlite: add to changegroup: %w", err)
 	}
 	return nil
@@ -703,7 +703,7 @@ func (cg *Changegroup) WriteTo(w io.Writer) (n int64, err error) {
 	xOutput, pOut := registerStreamWriter(wc)
 	defer unregisterStreamWriter(pOut)
 	res := ResultCode(lib.Xsqlite3changegroup_output_strm(cg.tls, cg.ptr, xOutput, pOut))
-	if err := reserr(res); err != nil {
+	if err := res.ToError(); err != nil {
 		return wc.n, fmt.Errorf("sqlite: write changegroup: %w", err)
 	}
 	return wc.n, nil

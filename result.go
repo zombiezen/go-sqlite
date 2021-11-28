@@ -344,11 +344,6 @@ type sqliteError struct {
 	code ResultCode
 }
 
-func reserr(res ResultCode) error {
-	// TODO(soon): Inline.
-	return res.ToError()
-}
-
 func (e sqliteError) Error() string {
 	return e.code.Message()
 }

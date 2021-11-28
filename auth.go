@@ -31,7 +31,7 @@ func (c *Conn) SetAuthorizer(auth Authorizer) error {
 	if auth == nil {
 		c.releaseAuthorizer()
 		res := ResultCode(lib.Xsqlite3_set_authorizer(c.tls, c.conn, 0, 0))
-		if err := reserr(res); err != nil {
+		if err := res.ToError(); err != nil {
 			return fmt.Errorf("sqlite: set authorizer: %w", err)
 		}
 		return nil
@@ -60,7 +60,7 @@ func (c *Conn) SetAuthorizer(auth Authorizer) error {
 	}{authTrampoline}))
 
 	res := ResultCode(lib.Xsqlite3_set_authorizer(c.tls, c.conn, xAuth, c.conn))
-	if err := reserr(res); err != nil {
+	if err := res.ToError(); err != nil {
 		return fmt.Errorf("sqlite: set authorizer: %w", err)
 	}
 	return nil
