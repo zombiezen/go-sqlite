@@ -2,14 +2,15 @@
 
 [![Go Reference](https://pkg.go.dev/badge/zombiezen.com/go/sqlite.svg)][reference docs]
 
-This package provides a low-level Go interface to [SQLite 3][]. It is a fork of
-[`crawshaw.io/sqlite`][] that uses [`modernc.org/sqlite`][], a CGo-free SQLite
-package.  It aims to be a mostly drop-in replacement for
-`crawshaw.io/sqlite`.
+This package provides a low-level Go interface to [SQLite 3][].
+It is a fork of [`crawshaw.io/sqlite`][] that uses [`modernc.org/sqlite`][],
+a CGo-free SQLite package.
+It aims to be a mostly drop-in replacement for `crawshaw.io/sqlite`.
 
-This package deliberately does not provide a `database/sql` driver. See
-[David Crawshaw's rationale][] for an in-depth explanation. If you want to use
-`database/sql` with SQLite without CGo, use `modernc.org/sqlite` directly.
+This package deliberately does not provide a `database/sql` driver.
+See [David Crawshaw's rationale][] for an in-depth explanation.
+If you want to use `database/sql` with SQLite without CGo,
+use `modernc.org/sqlite` directly.
 
 [`crawshaw.io/sqlite`]: https://github.com/crawshaw/sqlite
 [David Crawshaw's rationale]: https://crawshaw.io/blog/go-and-sqlite
@@ -19,11 +20,12 @@ This package deliberately does not provide a `database/sql` driver. See
 
 ## Features
 
-- Full SQLite functionality via `modernc.org/sqlite`, an automatically generated
-  translation of the original C source code of SQLite into Go
-- Builds with `CGO_ENABLED=0`, allowing cross-compiling and data race detection
-- Allows access to SQLite-specific features like [blob I/O][] and
-  [user-defined functions][]
+- Full SQLite functionality via `modernc.org/sqlite`,
+  an automatically generated translation of the original C source code of SQLite into Go
+- Builds with `CGO_ENABLED=0`,
+  allowing cross-compiling and data race detection
+- Allows access to SQLite-specific features
+  like [blob I/O][] and [user-defined functions][]
 - Includes a simple [schema migration package][]
 - Utilities for [running embedded SQL scripts][ExecScriptFS] using the
   [Go 1.16 embedding feature][]
@@ -45,8 +47,8 @@ This package deliberately does not provide a `database/sql` driver. See
 go get zombiezen.com/go/sqlite
 ```
 
-While this library does not use CGo, make sure that you are building for one of
-the [supported architectures][].
+While this library does not use CGo,
+make sure that you are building for one of the [supported architectures][].
 
 [supported architectures]: https://pkg.go.dev/modernc.org/sqlite#hdr-Supported_platforms_and_architectures
 
@@ -81,11 +83,11 @@ if err != nil {
 }
 ```
 
-If you're creating a new application, see the [package examples][] or the
-[reference docs][].
+If you're creating a new application,
+see the [package examples][] or the [reference docs][].
 
-If you're looking to switch existing code that uses `crawshaw.io/sqlite`, take
-a look at the [migration docs][].
+If you're looking to switch existing code that uses `crawshaw.io/sqlite`,
+take a look at the [migration docs][].
 
 [package examples]: https://pkg.go.dev/zombiezen.com/go/sqlite#pkg-examples
 
