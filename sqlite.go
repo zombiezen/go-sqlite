@@ -112,20 +112,22 @@ func OpenConn(path string, flags ...OpenFlags) (*Conn, error) {
 		return nil, fmt.Errorf("sqlite: open %q: disable double-quoted string literals: %v", path, err)
 	}
 
+	c.SetBlockOnBusy()
+
 	if openFlags&OpenWAL != 0 {
 		stmt, _, err := c.PrepareTransient("PRAGMA journal_mode=wal;")
 		if err != nil {
 			c.Close()
 			return nil, fmt.Errorf("sqlite: open %q: %w", path, err)
 		}
-		defer stmt.Finalize()
 		if _, err := stmt.Step(); err != nil {
+			stmt.Finalize()
 			c.Close()
-			return nil, fmt.Errorf("sqlite: open %q: %w", path, err)
+			return nil, fmt.Errorf("setting wal journal mode: %w", err)
 		}
+		defer stmt.Finalize()
 	}
 
-	c.SetBlockOnBusy()
 	return c, nil
 }
 
