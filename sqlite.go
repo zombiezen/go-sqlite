@@ -113,15 +113,21 @@ func OpenConn(path string, flags ...OpenFlags) (*Conn, error) {
 	}
 
 	if openFlags&OpenWAL != 0 {
+		// Set timeout for enabling WAL.
+		// See https://github.com/crawshaw/sqlite/pull/113 for details.
+		// TODO(maybe): Pass in Context to OpenConn?
+		c.SetBusyTimeout(10 * time.Second)
+
 		stmt, _, err := c.PrepareTransient("PRAGMA journal_mode=wal;")
 		if err != nil {
 			c.Close()
 			return nil, fmt.Errorf("sqlite: open %q: %w", path, err)
 		}
-		defer stmt.Finalize()
-		if _, err := stmt.Step(); err != nil {
+		_, err = stmt.Step()
+		stmt.Finalize()
+		if err != nil {
 			c.Close()
-			return nil, fmt.Errorf("sqlite: open %q: %w", path, err)
+			return nil, fmt.Errorf("sqlite: open %q: enable wal: %w", path, err)
 		}
 	}
 
