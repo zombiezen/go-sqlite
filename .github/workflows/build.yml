@@ -2,7 +2,9 @@
 # SPDX-License-Identifier: ISC
 
 name: Build
-on: push
+on:
+  - push
+  - pull_request
 jobs:
   build:
     name: Build
