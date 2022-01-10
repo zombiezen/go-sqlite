@@ -51,6 +51,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   but report success.
 - `sqlitemigration` will no longer skip applying the repeatable migration
   if the final migration is empty.
+- `OpenConn` now sets a busy handler before enabling WAL
+  (thanks @anacrolix!).
 
 ## [0.8.0][] - 2021-11-07
 
