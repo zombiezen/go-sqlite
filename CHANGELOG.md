@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that take in an `ExecOptions` struct.
   ([#5](https://github.com/zombiezen/go-sqlite/issues/5))
 - New method `sqlite.ResultCode.ToError` to create error values.
+- New methods `ColumnBool` and `GetBool` on `*sqlite.Stmt`
+  ([#37](https://github.com/zombiezen/go-sqlite/issues/37)).
 
 ### Changed
 

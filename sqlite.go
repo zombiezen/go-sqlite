@@ -1026,6 +1026,15 @@ func (stmt *Stmt) ColumnInt64(col int) int64 {
 	return lib.Xsqlite3_column_int64(stmt.conn.tls, stmt.stmt, int32(col))
 }
 
+// ColumnBool reports whether a query result value is non-zero.
+//
+// Column indices start at 0.
+//
+// https://www.sqlite.org/c3ref/column_blob.html
+func (stmt *Stmt) ColumnBool(col int) bool {
+	return stmt.ColumnInt64(col) != 0
+}
+
 // ColumnBytes reads a query result into buf.
 // It reports the number of bytes read.
 //
@@ -1163,6 +1172,11 @@ func (stmt *Stmt) GetInt64(colName string) int64 {
 		return 0
 	}
 	return stmt.ColumnInt64(col)
+}
+
+// GetBool reports whether the query result value for colName is non-zero.
+func (stmt *Stmt) GetBool(colName string) bool {
+	return stmt.GetInt64(colName) != 0
 }
 
 // GetBytes reads a query result for colName into buf.
