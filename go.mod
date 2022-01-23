@@ -1,6 +1,6 @@
 module zombiezen.com/go/sqlite
 
-go 1.15
+go 1.16
 
 require (
 	crawshaw.io/iox v0.0.0-20181124134642-c51c3df30797
@@ -10,4 +10,9 @@ require (
 	github.com/google/go-cmp v0.5.3
 	modernc.org/libc v1.14.1
 	modernc.org/sqlite v1.14.5
+)
+
+retract (
+	v0.9.1 // Contains retractions only.
+	v0.9.0 // Had libc memgrind issues.
 )
