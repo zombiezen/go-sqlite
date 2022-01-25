@@ -900,6 +900,7 @@ func TestSetDefensive(t *testing.T) {
 }
 
 func TestMain(m *testing.M) {
+	_ = libc.Environ() // Forces libc.SetEnviron; fixes memory accounting balance for environ(7).
 	libc.MemAuditStart()
 	rc := m.Run()
 	if err := libc.MemAuditReport(); err != nil {
