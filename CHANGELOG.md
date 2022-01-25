@@ -5,15 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-[Unreleased]: https://github.com/zombiezen/go-sqlite/compare/v0.9.0...main
+[Unreleased]: https://github.com/zombiezen/go-sqlite/compare/v0.9.2...main
 
-## [0.9.0][] - 2022-01-23
+## [0.9.2][] - 2022-01-25
 
 Version 0.9 adds new `Execute` functions to `sqlitex`
 and changes the default blocking behavior.
 Version 0.9 also includes various fixes to the schema migration behavior.
 
-[0.9.0]: https://github.com/zombiezen/go-sqlite/releases/tag/v0.9.0
+[0.9.2]: https://github.com/zombiezen/go-sqlite/releases/tag/v0.9.2
 
 ### Added
 
@@ -61,6 +61,15 @@ Version 0.9 also includes various fixes to the schema migration behavior.
   if the final migration is empty.
 - `OpenConn` now sets a busy handler before enabling WAL
   (thanks @anacrolix!).
+
+## 0.9.0 and 0.9.1
+
+Versions 0.9.0 was accidentally released before CI ran.
+A change in the underlying `modernc.org/libc` library
+caused the memory leak detection to identify a false positive.
+In an abundance of caution, 0.9.1 was released
+to mark both 0.9.1 and 0.9.0 as retracted.
+Version 0.9.2 is the first official release of 0.9.
 
 ## [0.8.0][] - 2021-11-07
 
