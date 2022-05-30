@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Version 0.9.3 updates the version of `modernc.org/sqlite` used.
 
+[0.9.3]: https://github.com/zombiezen/go-sqlite/releases/tag/v0.9.3
+
 ### Changed
 
 - Minimum `modernc.org/sqlite` version updated to v1.17.3.
