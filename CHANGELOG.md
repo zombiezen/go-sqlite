@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 [Unreleased]: https://github.com/zombiezen/go-sqlite/compare/v0.9.3...main
 
+## [Unreleased][]
+
+### Added
+
+- `FunctionImpl` has two new fields (`WindowValue` and `WindowInverse`)
+  that allow creating [user-defined aggregate window functions][]
+  ([#42](https://github.com/zombiezen/go-sqlite/issues/42)).
+
+[user-defined aggregate window functions]: https://www.sqlite.org/windowfunctions.html#user_defined_aggregate_window_functions
+
+### Changed
+
+- The `AggregateStep` callback now returns an `error`.
+
 ## [0.9.3][] - 2022-05-30
 
 Version 0.9.3 updates the version of `modernc.org/sqlite` used.

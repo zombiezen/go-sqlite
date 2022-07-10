@@ -18,7 +18,10 @@
 package sqlite
 
 import (
+	"fmt"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestFunc(t *testing.T) {
@@ -106,8 +109,9 @@ func TestAggFunc(t *testing.T) {
 	}
 	{
 		var sum int64
-		sumintsImpl.AggregateStep = func(ctx Context, args []Value) {
+		sumintsImpl.AggregateStep = func(ctx Context, args []Value) error {
 			sum += args[0].Int64()
+			return nil
 		}
 		sumintsImpl.AggregateFinal = func(ctx Context) (Value, error) {
 			result := IntegerValue(sum)
@@ -129,6 +133,112 @@ func TestAggFunc(t *testing.T) {
 	}
 	if got := stmt.ColumnInt(0); got != want {
 		t.Errorf("sum(c)=%d, want %d", got, want)
+	}
+}
+
+// Equivalent of https://www.sqlite.org/windowfunctions.html#user_defined_aggregate_window_functions
+func TestWindowFunc(t *testing.T) {
+	c, err := OpenConn(":memory:", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := c.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	stmt, _, err := c.PrepareTransient("CREATE TABLE t3 (x, y);")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := stmt.Step(); err != nil {
+		t.Fatal(err)
+	}
+	if err := stmt.Finalize(); err != nil {
+		t.Error(err)
+	}
+
+	stmt, err = c.Prepare("INSERT INTO t3 VALUES ('a', 4), " +
+		"('b', 5), " +
+		"('c', 3), " +
+		"('d', 8), " +
+		"('e', 1);")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stmt.Finalize()
+	if _, err := stmt.Step(); err != nil {
+		t.Errorf("INSERT: %v", err)
+	}
+
+	sumintImpl := &FunctionImpl{
+		NArgs:         1,
+		Deterministic: true,
+		AllowIndirect: true,
+	}
+	{
+		var sum int64
+		sumintImpl.AggregateStep = func(ctx Context, args []Value) error {
+			if args[0].Type() != TypeInteger {
+				return fmt.Errorf("invalid argument")
+			}
+			sum += args[0].Int64()
+			return nil
+		}
+		sumintImpl.WindowInverse = func(ctx Context, args []Value) error {
+			sum -= args[0].Int64()
+			return nil
+		}
+		sumintImpl.WindowValue = func(ctx Context) (Value, error) {
+			return IntegerValue(sum), nil
+		}
+		sumintImpl.AggregateFinal = func(ctx Context) (Value, error) {
+			result := IntegerValue(sum)
+			sum = 0
+			return result, nil
+		}
+	}
+	if err := c.CreateFunction("sumint", sumintImpl); err != nil {
+		t.Fatal(err)
+	}
+
+	stmt, _, err = c.PrepareTransient("SELECT x, sumint(y) OVER (" +
+		"ORDER BY x ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING" +
+		") AS sum_y " +
+		"FROM t3 ORDER BY x;")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stmt.Finalize()
+	type row struct {
+		x    string
+		sumY int64
+	}
+	var got []row
+	for {
+		hasData, err := stmt.Step()
+		if err != nil {
+			t.Error("SELECT:", err)
+			break
+		}
+		if !hasData {
+			break
+		}
+		got = append(got, row{
+			stmt.ColumnText(0),
+			stmt.ColumnInt64(1),
+		})
+	}
+	want := []row{
+		{"a", 9},
+		{"b", 12},
+		{"c", 16},
+		{"d", 12},
+		{"e", 9},
+	}
+	if diff := cmp.Diff(want, got, cmp.AllowUnexported(row{})); diff != "" {
+		t.Errorf("-want +got:\n%s", diff)
 	}
 }
 
