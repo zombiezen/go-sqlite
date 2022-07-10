@@ -103,7 +103,7 @@ func TestAggFunc(t *testing.T) {
 	}
 
 	sumintsImpl := &FunctionImpl{
-		NArgs:         2,
+		NArgs:         1,
 		Deterministic: true,
 		AllowIndirect: true,
 	}
@@ -123,7 +123,7 @@ func TestAggFunc(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	stmt, _, err = c.PrepareTransient("SELECT sum(c) FROM t;")
+	stmt, _, err = c.PrepareTransient("SELECT sumints(c) FROM t;")
 	if err != nil {
 		t.Fatal(err)
 	}
