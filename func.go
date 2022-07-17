@@ -409,16 +409,28 @@ type FunctionImpl struct {
 
 	// AggregateStep is called for each row
 	// of an aggregate function's SQL invocation.
-	AggregateStep func(ctx Context, rowArgs []Value) error
-	// AggregateFinal is called after all of the aggregate function's input rows
-	// have been stepped through to construct the result.
 	//
-	// Use closure variables to pass information between AggregateStep and
-	// AggregateFinal. The AggregateFinal function should also reset any shared
-	// variables to their initial states before returning.
+	// Use closure variables to accumulate state between calls to AggregateStep.
+	AggregateStep func(ctx Context, rowArgs []Value) error
+	// AggregateFinal is called
+	// after all of the aggregate function's input rows have been stepped through.
+	// The AggregateFinal function should
+	// reset the state used in AggregateStep to its initial value.
+	// When using the function as a non-window aggregate,
+	// the returned value is used as the function's result.
+	// When using a function as window aggregate,
+	// the function will only receive a call to AggregateFinal
+	// when it processes one or more rows during its evaluation
+	// to reset state (the returned Value is ignored).
+	//
+	// Use closure variables to pass information between AggregateStep and AggregateFinal.
 	AggregateFinal func(ctx Context) (Value, error)
 
-	// WindowValue is called to get the current value of a aggregate window function.
+	// WindowValue is called to get the current value of an aggregate window function.
+	// This function will not be called when using an aggregate window function
+	// as an ordinary aggregate function.
+	//
+	// Use closure variables to pass information between AggregateStep and WindowValue.
 	WindowValue func(ctx Context) (Value, error)
 	// WindowInverse is called to remove
 	// the oldest presently aggregated result of AggregateStep
@@ -608,6 +620,14 @@ func funcTrampoline(tls *libc.TLS, ctx uintptr, n int32, valarray uintptr) {
 }
 
 func stepTrampoline(tls *libc.TLS, ctx uintptr, n int32, valarray uintptr) {
+	f := getxfuncs(tls, ctx)
+	if f.xValue != nil {
+		// SQLite only calls xFinal on window functions
+		// when they have an aggregate context allocated.
+		// The actual data is unused, since the closures pass data out-of-band.
+		lib.Xsqlite3_aggregate_context(tls, ctx, 1)
+	}
+
 	vals := make([]Value, 0, int(n))
 	for ; len(vals) < cap(vals); valarray += uintptr(ptrSize) {
 		vals = append(vals, Value{
@@ -616,7 +636,7 @@ func stepTrampoline(tls *libc.TLS, ctx uintptr, n int32, valarray uintptr) {
 		})
 	}
 	goCtx := Context{tls: tls, ptr: ctx}
-	if err := getxfuncs(tls, ctx).xStep(goCtx, vals); err != nil {
+	if err := f.xStep(goCtx, vals); err != nil {
 		goCtx.resultError(err)
 	}
 }

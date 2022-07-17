@@ -102,6 +102,7 @@ func TestAggFunc(t *testing.T) {
 		}
 	}
 
+	finalCalled := false
 	sumintsImpl := &FunctionImpl{
 		NArgs:         1,
 		Deterministic: true,
@@ -114,6 +115,7 @@ func TestAggFunc(t *testing.T) {
 			return nil
 		}
 		sumintsImpl.AggregateFinal = func(ctx Context) (Value, error) {
+			finalCalled = true
 			result := IntegerValue(sum)
 			sum = 0
 			return result, nil
@@ -133,6 +135,9 @@ func TestAggFunc(t *testing.T) {
 	}
 	if got := stmt.ColumnInt(0); got != want {
 		t.Errorf("sum(c)=%d, want %d", got, want)
+	}
+	if !finalCalled {
+		t.Error("xFinal not called")
 	}
 }
 
@@ -172,6 +177,7 @@ func TestWindowFunc(t *testing.T) {
 		t.Errorf("INSERT: %v", err)
 	}
 
+	finalCalled := false
 	sumintImpl := &FunctionImpl{
 		NArgs:         1,
 		Deterministic: true,
@@ -194,6 +200,7 @@ func TestWindowFunc(t *testing.T) {
 			return IntegerValue(sum), nil
 		}
 		sumintImpl.AggregateFinal = func(ctx Context) (Value, error) {
+			finalCalled = true
 			result := IntegerValue(sum)
 			sum = 0
 			return result, nil
@@ -239,6 +246,9 @@ func TestWindowFunc(t *testing.T) {
 	}
 	if diff := cmp.Diff(want, got, cmp.AllowUnexported(row{})); diff != "" {
 		t.Errorf("-want +got:\n%s", diff)
+	}
+	if !finalCalled {
+		t.Error("xFinal not called")
 	}
 }
 
