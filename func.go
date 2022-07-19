@@ -370,32 +370,10 @@ func (v Value) Blob() []byte {
 	return libc.GoBytes(ptr, int(lib.Xsqlite3_value_bytes(v.tls, v.ptrOrType)))
 }
 
-type xfunc struct {
-	xFunc    func(Context, []Value) (Value, error)
-	xStep    func(Context, []Value) error
-	xFinal   func(Context) (Value, error)
-	xValue   func(Context) (Value, error)
-	xInverse func(Context, []Value) error
-}
-
-var xfuncs = struct {
-	mu  sync.RWMutex
-	m   map[uintptr]*xfunc
-	ids idGen
-}{
-	m: make(map[uintptr]*xfunc),
-}
-
 // FunctionImpl describes an [application-defined SQL function].
-// Either Scalar or both AggregateStep and AggregateFinal must be set.
-//
-// Aggregate functions may optionally include
-// callbacks for WindowValue and WindowInverse
-// so that they may be used as a window function.
-// See [application-defined window functions] for more details.
+// Either Scalar or MakeAggregate must be set, but not both.
 //
 // [application-defined SQL function]: https://sqlite.org/appfunc.html
-// [application-defined window functions]: https://www.sqlite.org/windowfunctions.html#user_defined_aggregate_window_functions
 type FunctionImpl struct {
 	// NArgs is the required number of arguments that the function accepts.
 	// If NArgs is negative, then the function is variadic.
@@ -407,36 +385,8 @@ type FunctionImpl struct {
 	// Scalar is called when a scalar function is invoked in SQL.
 	Scalar func(ctx Context, args []Value) (Value, error)
 
-	// AggregateStep is called for each row
-	// of an aggregate function's SQL invocation.
-	//
-	// Use closure variables to accumulate state between calls to AggregateStep.
-	AggregateStep func(ctx Context, rowArgs []Value) error
-	// AggregateFinal is called
-	// after all of the aggregate function's input rows have been stepped through.
-	// The AggregateFinal function should
-	// reset the state used in AggregateStep to its initial value.
-	// When using the function as a non-window aggregate,
-	// the returned value is used as the function's result.
-	// When using a function as window aggregate,
-	// the function will only receive a call to AggregateFinal
-	// when it processes one or more rows during its evaluation
-	// to reset state (the returned Value is ignored).
-	//
-	// Use closure variables to pass information between AggregateStep and AggregateFinal.
-	AggregateFinal func(ctx Context) (Value, error)
-
-	// WindowValue is called to get the current value of an aggregate window function.
-	// This function will not be called when using an aggregate window function
-	// as an ordinary aggregate function.
-	//
-	// Use closure variables to pass information between AggregateStep and WindowValue.
-	WindowValue func(ctx Context) (Value, error)
-	// WindowInverse is called to remove
-	// the oldest presently aggregated result of AggregateStep
-	// from the current window.
-	// The arguments are those passed to AggregateStep for the row being removed.
-	WindowInverse func(ctx Context, rowArgs []Value) error
+	// MakeAggregate is called at the beginning of an evaluation of an aggregate function.
+	MakeAggregate func(ctx Context) (AggregateFunction, error)
 
 	// If Deterministic is true, the function must always give the same output
 	// when the input parameters are the same. This enables functions to be used
@@ -458,6 +408,34 @@ type FunctionImpl struct {
 	AllowIndirect bool
 }
 
+// An AggregateFunction is an invocation of an aggregate function.
+// See the documentation for [aggregate function callbacks]
+// and [application-defined window functions] for an overview.
+//
+// [aggregate function callbacks]: https://www.sqlite.org/appfunc.html#the_aggregate_function_callbacks
+// [application-defined window functions]: https://www.sqlite.org/windowfunctions.html#user_defined_aggregate_window_functions
+type AggregateFunction interface {
+	// Step is called for each row
+	// of an aggregate function's SQL invocation.
+	Step(ctx Context, rowArgs []Value) error
+
+	// WindowInverse is called to remove
+	// the oldest presently aggregated result of Step
+	// from the current window.
+	// The arguments are those passed to Step for the row being removed.
+	WindowInverse(ctx Context, rowArgs []Value) error
+
+	// WindowValue is called to get the current value of an aggregate window function.
+	// This function will not be called when using an aggregate window function
+	// as an ordinary aggregate function.
+	WindowValue(ctx Context) (Value, error)
+
+	// Finalize is called after all of the aggregate function's input rows
+	// have been stepped through.
+	// No other methods will be called on the AggregateFunction after calling Finalize.
+	Finalize(ctx Context)
+}
+
 // CreateFunction registers a Go function with SQLite
 // for use in SQL queries.
 //
@@ -472,29 +450,11 @@ func (c *Conn) CreateFunction(name string, impl *FunctionImpl) error {
 	if impl.NArgs > 127 {
 		return fmt.Errorf("sqlite: create function %s: too many permitted arguments (%d)", name, impl.NArgs)
 	}
-	if impl.AggregateStep == nil {
-		if impl.Scalar == nil {
-			return fmt.Errorf("sqlite: create function %s: must specify one of Scalar or AggregateStep", name)
-		}
-		if impl.AggregateFinal != nil {
-			return fmt.Errorf("sqlite: create function %s: must not specify AggregateFinal with Scalar", name)
-		}
-		if impl.WindowValue != nil {
-			return fmt.Errorf("sqlite: create function %s: must not specify WindowValue with Scalar", name)
-		}
-		if impl.WindowInverse != nil {
-			return fmt.Errorf("sqlite: create function %s: must not specify WindowInverse with Scalar", name)
-		}
-	} else {
-		if impl.Scalar != nil {
-			return fmt.Errorf("sqlite: create function %s: both Scalar and AggregateStep specified", name)
-		}
-		if impl.AggregateFinal == nil {
-			return fmt.Errorf("sqlite: create function %s: AggregateStep specified without AggregateFinal", name)
-		}
-		if (impl.WindowInverse == nil) != (impl.WindowValue == nil) {
-			return fmt.Errorf("sqlite: create function %s: aggregate window functions must set both WindowValue and WindowInverse", name)
-		}
+	if impl.Scalar == nil && impl.MakeAggregate == nil {
+		return fmt.Errorf("sqlite: create function %s: must specify one of Scalar or MakeAggregate", name)
+	}
+	if impl.Scalar != nil && impl.MakeAggregate != nil {
+		return fmt.Errorf("sqlite: create function %s: both Scalar and MakeAggregate specified", name)
 	}
 
 	cname, err := libc.CString(name)
@@ -511,61 +471,35 @@ func (c *Conn) CreateFunction(name string, impl *FunctionImpl) error {
 		eTextRep |= lib.SQLITE_DIRECTONLY
 	}
 
-	x := &xfunc{
-		xFunc:    impl.Scalar,
-		xStep:    impl.AggregateStep,
-		xFinal:   impl.AggregateFinal,
-		xValue:   impl.WindowValue,
-		xInverse: impl.WindowInverse,
-	}
-
-	xfuncs.mu.Lock()
-	id := xfuncs.ids.next()
-	xfuncs.m[id] = x
-	xfuncs.mu.Unlock()
-
-	// The following are conversions from function values to uintptr. It assumes
-	// the memory representation described in https://golang.org/s/go11func.
-	//
-	// It does this by doing the following in order:
-	// 1) Create a Go struct containing a pointer to a pointer to
-	//    the function. It is assumed that the pointer to the function will be
-	//    stored in the read-only data section and thus will not move.
-	// 2) Convert the pointer to the Go struct to a pointer to uintptr through
-	//    unsafe.Pointer. This is permitted via Rule #1 of unsafe.Pointer.
-	// 3) Dereference the pointer to uintptr to obtain the function value as a
-	//    uintptr. This is safe as long as function values are passed as pointers.
-	var funcfn, stepfn, finalfn, valuefn, inversefn uintptr
-	if impl.Scalar == nil {
-		stepfn = *(*uintptr)(unsafe.Pointer(&struct {
-			f func(*libc.TLS, uintptr, int32, uintptr)
-		}{stepTrampoline}))
-		finalfn = *(*uintptr)(unsafe.Pointer(&struct {
-			f func(*libc.TLS, uintptr)
-		}{finalTrampoline}))
-		if impl.WindowValue != nil {
-			inversefn = *(*uintptr)(unsafe.Pointer(&struct {
-				f func(*libc.TLS, uintptr, int32, uintptr)
-			}{inverseTrampoline}))
-			valuefn = *(*uintptr)(unsafe.Pointer(&struct {
-				f func(*libc.TLS, uintptr)
-			}{valueTrampoline}))
-		}
-	} else {
-		funcfn = *(*uintptr)(unsafe.Pointer(&struct {
-			f func(*libc.TLS, uintptr, int32, uintptr)
-		}{funcTrampoline}))
-	}
-	destroyfn := *(*uintptr)(unsafe.Pointer(&struct {
-		f func(*libc.TLS, uintptr)
-	}{destroyFuncTrampoline}))
-
 	numArgs := impl.NArgs
 	if numArgs < 0 {
 		numArgs = -1
 	}
 	var res ResultCode
-	if impl.WindowValue == nil {
+	if impl.Scalar != nil {
+		xfuncs.mu.Lock()
+		id := xfuncs.ids.next()
+		xfuncs.m[id] = impl.Scalar
+		xfuncs.mu.Unlock()
+
+		// The following are conversions from function values to uintptr. It assumes
+		// the memory representation described in https://golang.org/s/go11func.
+		//
+		// It does this by doing the following in order:
+		// 1) Create a Go struct containing a pointer to a pointer to
+		//    the function. It is assumed that the pointer to the function will be
+		//    stored in the read-only data section and thus will not move.
+		// 2) Convert the pointer to the Go struct to a pointer to uintptr through
+		//    unsafe.Pointer. This is permitted via Rule #1 of unsafe.Pointer.
+		// 3) Dereference the pointer to uintptr to obtain the function value as a
+		//    uintptr. This is safe as long as function values are passed as pointers.
+		funcfn := *(*uintptr)(unsafe.Pointer(&struct {
+			f func(*libc.TLS, uintptr, int32, uintptr)
+		}{funcTrampoline}))
+		destroyfn := *(*uintptr)(unsafe.Pointer(&struct {
+			f func(*libc.TLS, uintptr)
+		}{destroyScalarFunc}))
+
 		res = ResultCode(lib.Xsqlite3_create_function_v2(
 			c.tls,
 			c.conn,
@@ -574,11 +508,43 @@ func (c *Conn) CreateFunction(name string, impl *FunctionImpl) error {
 			eTextRep,
 			id,
 			funcfn,
-			stepfn,
-			finalfn,
+			0,
+			0,
 			destroyfn,
 		))
 	} else {
+		xAggregateFactories.mu.Lock()
+		id := xAggregateFactories.ids.next()
+		xAggregateFactories.m[id] = impl.MakeAggregate
+		xAggregateFactories.mu.Unlock()
+
+		// The following are conversions from function values to uintptr. It assumes
+		// the memory representation described in https://golang.org/s/go11func.
+		//
+		// It does this by doing the following in order:
+		// 1) Create a Go struct containing a pointer to a pointer to
+		//    the function. It is assumed that the pointer to the function will be
+		//    stored in the read-only data section and thus will not move.
+		// 2) Convert the pointer to the Go struct to a pointer to uintptr through
+		//    unsafe.Pointer. This is permitted via Rule #1 of unsafe.Pointer.
+		// 3) Dereference the pointer to uintptr to obtain the function value as a
+		//    uintptr. This is safe as long as function values are passed as pointers.
+		stepfn := *(*uintptr)(unsafe.Pointer(&struct {
+			f func(*libc.TLS, uintptr, int32, uintptr)
+		}{stepTrampoline}))
+		finalfn := *(*uintptr)(unsafe.Pointer(&struct {
+			f func(*libc.TLS, uintptr)
+		}{finalTrampoline}))
+		inversefn := *(*uintptr)(unsafe.Pointer(&struct {
+			f func(*libc.TLS, uintptr, int32, uintptr)
+		}{inverseTrampoline}))
+		valuefn := *(*uintptr)(unsafe.Pointer(&struct {
+			f func(*libc.TLS, uintptr)
+		}{valueTrampoline}))
+		destroyfn := *(*uintptr)(unsafe.Pointer(&struct {
+			f func(*libc.TLS, uintptr)
+		}{destroyAggregateFunc}))
+
 		res = ResultCode(lib.Xsqlite3_create_window_function(
 			c.tls,
 			c.conn,
@@ -599,15 +565,20 @@ func (c *Conn) CreateFunction(name string, impl *FunctionImpl) error {
 	return nil
 }
 
-func getxfuncs(tls *libc.TLS, ctx uintptr) *xfunc {
+var xfuncs = struct {
+	mu  sync.RWMutex
+	m   map[uintptr]func(Context, []Value) (Value, error)
+	ids idGen
+}{
+	m: make(map[uintptr]func(Context, []Value) (Value, error)),
+}
+
+func funcTrampoline(tls *libc.TLS, ctx uintptr, n int32, valarray uintptr) {
 	id := lib.Xsqlite3_user_data(tls, ctx)
 	xfuncs.mu.RLock()
 	x := xfuncs.m[id]
 	xfuncs.mu.RUnlock()
-	return x
-}
 
-func funcTrampoline(tls *libc.TLS, ctx uintptr, n int32, valarray uintptr) {
 	vals := make([]Value, 0, int(n))
 	for ; len(vals) < cap(vals); valarray += uintptr(ptrSize) {
 		vals = append(vals, Value{
@@ -616,16 +587,75 @@ func funcTrampoline(tls *libc.TLS, ctx uintptr, n int32, valarray uintptr) {
 		})
 	}
 	goCtx := Context{tls: tls, ptr: ctx}
-	goCtx.result(getxfuncs(tls, ctx).xFunc(goCtx, vals))
+	goCtx.result(x(goCtx, vals))
+}
+
+func destroyScalarFunc(tls *libc.TLS, id uintptr) {
+	xfuncs.mu.Lock()
+	defer xfuncs.mu.Unlock()
+	delete(xfuncs.m, id)
+	xfuncs.ids.reclaim(id)
+}
+
+var (
+	xAggregateFactories = struct {
+		mu  sync.RWMutex
+		m   map[uintptr]func(Context) (AggregateFunction, error)
+		ids idGen
+	}{
+		m: make(map[uintptr]func(Context) (AggregateFunction, error)),
+	}
+
+	xAggregateContext = struct {
+		mu  sync.RWMutex
+		m   map[uintptr]AggregateFunction
+		ids idGen
+	}{
+		m: make(map[uintptr]AggregateFunction),
+	}
+)
+
+func makeAggregate(tls *libc.TLS, ctx uintptr) (AggregateFunction, uintptr) {
+	goCtx := Context{tls: tls, ptr: ctx}
+	aggCtx := (*uintptr)(unsafe.Pointer(lib.Xsqlite3_aggregate_context(tls, ctx, int32(ptrSize))))
+	if aggCtx == nil {
+		goCtx.resultError(errors.New("insufficient memory for aggregate"))
+		return nil, 0
+	}
+	if *aggCtx != 0 {
+		// Already created.
+		xAggregateContext.mu.RLock()
+		f := xAggregateContext.m[*aggCtx]
+		xAggregateContext.mu.RUnlock()
+		return f, *aggCtx
+	}
+
+	factoryID := lib.Xsqlite3_user_data(tls, ctx)
+	xAggregateFactories.mu.RLock()
+	factory := xAggregateFactories.m[factoryID]
+	xAggregateFactories.mu.RUnlock()
+
+	f, err := factory(goCtx)
+	if err != nil {
+		goCtx.resultError(err)
+		return nil, 0
+	}
+	if f == nil {
+		goCtx.resultError(errors.New("MakeAggregate function returned nil"))
+		return nil, 0
+	}
+
+	xAggregateContext.mu.Lock()
+	*aggCtx = xAggregateContext.ids.next()
+	xAggregateContext.m[*aggCtx] = f
+	xAggregateContext.mu.Unlock()
+	return f, *aggCtx
 }
 
 func stepTrampoline(tls *libc.TLS, ctx uintptr, n int32, valarray uintptr) {
-	f := getxfuncs(tls, ctx)
-	if f.xValue != nil {
-		// SQLite only calls xFinal on window functions
-		// when they have an aggregate context allocated.
-		// The actual data is unused, since the closures pass data out-of-band.
-		lib.Xsqlite3_aggregate_context(tls, ctx, 1)
+	x, _ := makeAggregate(tls, ctx)
+	if x == nil {
+		return
 	}
 
 	vals := make([]Value, 0, int(n))
@@ -636,24 +666,42 @@ func stepTrampoline(tls *libc.TLS, ctx uintptr, n int32, valarray uintptr) {
 		})
 	}
 	goCtx := Context{tls: tls, ptr: ctx}
-	if err := f.xStep(goCtx, vals); err != nil {
+	if err := x.Step(goCtx, vals); err != nil {
 		goCtx.resultError(err)
 	}
 }
 
 func finalTrampoline(tls *libc.TLS, ctx uintptr) {
-	x := getxfuncs(tls, ctx)
+	x, id := makeAggregate(tls, ctx)
+	if x == nil {
+		return
+	}
 	goCtx := Context{tls: tls, ptr: ctx}
-	goCtx.result(x.xFinal(goCtx))
+	goCtx.result(x.WindowValue(goCtx))
+	x.Finalize(goCtx)
+
+	xAggregateContext.mu.Lock()
+	defer xAggregateContext.mu.Unlock()
+	delete(xAggregateContext.m, id)
+	xAggregateContext.ids.reclaim(id)
 }
 
 func valueTrampoline(tls *libc.TLS, ctx uintptr) {
-	x := getxfuncs(tls, ctx)
+	x, _ := makeAggregate(tls, ctx)
+	if x == nil {
+		return
+	}
+
 	goCtx := Context{tls: tls, ptr: ctx}
-	goCtx.result(x.xValue(goCtx))
+	goCtx.result(x.WindowValue(goCtx))
 }
 
 func inverseTrampoline(tls *libc.TLS, ctx uintptr, n int32, valarray uintptr) {
+	x, _ := makeAggregate(tls, ctx)
+	if x == nil {
+		return
+	}
+
 	vals := make([]Value, 0, int(n))
 	for ; len(vals) < cap(vals); valarray += uintptr(ptrSize) {
 		vals = append(vals, Value{
@@ -662,16 +710,16 @@ func inverseTrampoline(tls *libc.TLS, ctx uintptr, n int32, valarray uintptr) {
 		})
 	}
 	goCtx := Context{tls: tls, ptr: ctx}
-	if err := getxfuncs(tls, ctx).xInverse(goCtx, vals); err != nil {
+	if err := x.WindowInverse(goCtx, vals); err != nil {
 		goCtx.resultError(err)
 	}
 }
 
-func destroyFuncTrampoline(tls *libc.TLS, id uintptr) {
-	xfuncs.mu.Lock()
-	defer xfuncs.mu.Unlock()
-	delete(xfuncs.m, id)
-	xfuncs.ids.reclaim(id)
+func destroyAggregateFunc(tls *libc.TLS, id uintptr) {
+	xAggregateFactories.mu.Lock()
+	defer xAggregateFactories.mu.Unlock()
+	delete(xAggregateFactories.m, id)
+	xAggregateFactories.ids.reclaim(id)
 }
 
 // idGen is an ID generator. The zero value is ready to use.

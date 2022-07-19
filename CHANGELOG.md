@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 [Unreleased]: https://github.com/zombiezen/go-sqlite/compare/v0.10.1...main
 
+## [Unreleased][]
+
+### Changed
+
+- User-defined aggregate functions are now encapsulated
+  with a new interface, `AggregateFunction`.
+  The previous 4-callback approach has been removed
+  and replaced with a single `MakeAggregate` callback.
+  Not only was the previous API unwieldy,
+  but it failed to handle concurrent aggregate function calls
+  in a single query.
+
 ## [0.10.1][] - 2022-07-17
 
 Version 0.10.1 fixes a bug in user-defined window functions.

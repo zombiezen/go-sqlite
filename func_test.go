@@ -103,25 +103,15 @@ func TestAggFunc(t *testing.T) {
 	}
 
 	finalCalled := false
-	sumintsImpl := &FunctionImpl{
+	err = c.CreateFunction("sumints", &FunctionImpl{
 		NArgs:         1,
 		Deterministic: true,
 		AllowIndirect: true,
-	}
-	{
-		var sum int64
-		sumintsImpl.AggregateStep = func(ctx Context, args []Value) error {
-			sum += args[0].Int64()
-			return nil
-		}
-		sumintsImpl.AggregateFinal = func(ctx Context) (Value, error) {
-			finalCalled = true
-			result := IntegerValue(sum)
-			sum = 0
-			return result, nil
-		}
-	}
-	if err := c.CreateFunction("sumints", sumintsImpl); err != nil {
+		MakeAggregate: func(ctx Context) (AggregateFunction, error) {
+			return &sumintsFunction{finalCalled: &finalCalled}, nil
+		},
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -178,35 +168,15 @@ func TestWindowFunc(t *testing.T) {
 	}
 
 	finalCalled := false
-	sumintImpl := &FunctionImpl{
+	err = c.CreateFunction("sumint", &FunctionImpl{
 		NArgs:         1,
 		Deterministic: true,
 		AllowIndirect: true,
-	}
-	{
-		var sum int64
-		sumintImpl.AggregateStep = func(ctx Context, args []Value) error {
-			if args[0].Type() != TypeInteger {
-				return fmt.Errorf("invalid argument")
-			}
-			sum += args[0].Int64()
-			return nil
-		}
-		sumintImpl.WindowInverse = func(ctx Context, args []Value) error {
-			sum -= args[0].Int64()
-			return nil
-		}
-		sumintImpl.WindowValue = func(ctx Context) (Value, error) {
-			return IntegerValue(sum), nil
-		}
-		sumintImpl.AggregateFinal = func(ctx Context) (Value, error) {
-			finalCalled = true
-			result := IntegerValue(sum)
-			sum = 0
-			return result, nil
-		}
-	}
-	if err := c.CreateFunction("sumint", sumintImpl); err != nil {
+		MakeAggregate: func(ctx Context) (AggregateFunction, error) {
+			return &sumintsFunction{finalCalled: &finalCalled}, nil
+		},
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -250,6 +220,32 @@ func TestWindowFunc(t *testing.T) {
 	if !finalCalled {
 		t.Error("xFinal not called")
 	}
+}
+
+type sumintsFunction struct {
+	sum         int64
+	finalCalled *bool
+}
+
+func (f *sumintsFunction) Step(ctx Context, args []Value) error {
+	if args[0].Type() != TypeInteger {
+		return fmt.Errorf("invalid argument")
+	}
+	f.sum += args[0].Int64()
+	return nil
+}
+
+func (f *sumintsFunction) WindowInverse(ctx Context, args []Value) error {
+	f.sum -= args[0].Int64()
+	return nil
+}
+
+func (f *sumintsFunction) WindowValue(ctx Context) (Value, error) {
+	return IntegerValue(f.sum), nil
+}
+
+func (f *sumintsFunction) Finalize(ctx Context) {
+	*f.finalCalled = true
 }
 
 func TestCastTextToInteger(t *testing.T) {
