@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Not only was the previous API unwieldy,
   but it failed to handle concurrent aggregate function calls
   in a single query.
+- Minimum `modernc.org/sqlite` version updated to 1.20.0.
 
 ## [0.10.1][] - 2022-07-17
 
