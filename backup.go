@@ -64,6 +64,7 @@ func (b *Backup) Step(n int) (more bool, err error) {
 
 // Remaining returns the number of pages still to be backed up
 // at the conclusion of the most recent call to [Backup.Step].
+// The return value of Remaining before calling [Backup.Step] is undefined.
 // If the source database is modified in a way that changes the number of pages remaining,
 // that change is not reflected in the output until after the next call to [Backup.Step].
 func (b *Backup) Remaining() int {
@@ -72,6 +73,7 @@ func (b *Backup) Remaining() int {
 
 // PageCount returns the total number of pages in the source database
 // at the conclusion of the most recent call to [Backup.Step].
+// The return value of PageCount before calling [Backup.Step] is undefined.
 // If the source database is modified in a way that changes the size of the source database,
 // that change is not reflected in the output until after the next call to [Backup.Step].
 func (b *Backup) PageCount() int {
