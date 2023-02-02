@@ -45,20 +45,11 @@ func (c *Conn) OpenBlob(dbn, table, column string, row int64, write bool) (*Blob
 }
 
 func (c *Conn) openBlob(dbn, table, column string, row int64, write bool) (_ *Blob, err error) {
-	var cdb uintptr
-	switch dbn {
-	case "", "main":
-		cdb = mainCString
-	case "temp":
-		cdb = tempCString
-	default:
-		var err error
-		cdb, err = libc.CString(dbn)
-		if err != nil {
-			return nil, fmt.Errorf("sqlite: open blob %q.%q: %w", table, column, err)
-		}
-		defer libc.Xfree(c.tls, cdb)
+	cdb, freeCDB, err := cDBName(dbn)
+	if err != nil {
+		return nil, fmt.Errorf("sqlite: open blob %q.%q: %w", table, column, err)
 	}
+	defer freeCDB()
 	var writeFlag int32
 	if write {
 		writeFlag = 1
@@ -315,5 +306,21 @@ func (blob *Blob) Close() error {
 }
 
 var errInvalidBlob = errors.New("invalid blob")
+
+// cDBName converts a database name into a C string.
+func cDBName(dbn string) (uintptr, func(), error) {
+	switch dbn {
+	case "", "main":
+		return mainCString, func() {}, nil
+	case "temp":
+		return tempCString, func() {}, nil
+	default:
+		cdb, err := libc.CString(dbn)
+		if err != nil {
+			return 0, nil, err
+		}
+		return cdb, func() { libc.Xfree(nil, cdb) }, nil
+	}
+}
 
 // TODO: Blob Reopen

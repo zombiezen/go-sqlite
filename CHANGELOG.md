@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 [Unreleased]: https://github.com/zombiezen/go-sqlite/compare/v0.11.0...main
 
+## [Unreleased][]
+
+### Added
+
+- Online backup API
+  ([#47](https://github.com/zombiezen/go-sqlite/issues/47)).
+
 ## [0.11.0][] - 2022-12-11
 
 Version 0.11 changes the aggregate function API.
