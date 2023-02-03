@@ -98,6 +98,7 @@ func OpenConn(path string, flags ...OpenFlags) (*Conn, error) {
 	if err := res.ToError(); err != nil {
 		// Making error opaque because it's not part of the primary connection
 		// opening and reflects an internal error.
+		c.Close()
 		return nil, fmt.Errorf("sqlite: open %q: disable double-quoted string literals: %v", path, err)
 	}
 	res = ResultCode(lib.Xsqlite3_db_config(
@@ -109,6 +110,7 @@ func OpenConn(path string, flags ...OpenFlags) (*Conn, error) {
 	if err := res.ToError(); err != nil {
 		// Making error opaque because it's not part of the primary connection
 		// opening and reflects an internal error.
+		c.Close()
 		return nil, fmt.Errorf("sqlite: open %q: disable double-quoted string literals: %v", path, err)
 	}
 
