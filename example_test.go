@@ -17,7 +17,7 @@ import (
 
 func Example() {
 	// Open an in-memory database.
-	conn, err := sqlite.OpenConn(":memory:", sqlite.OpenReadWrite|sqlite.OpenNoMutex)
+	conn, err := sqlite.OpenConn(":memory:")
 	if err != nil {
 		// handle error
 	}
@@ -42,7 +42,7 @@ func Example() {
 // statement API instead of sqlitex.
 func Example_withoutX() {
 	// Open an in-memory database.
-	conn, err := sqlite.OpenConn(":memory:", sqlite.OpenReadWrite)
+	conn, err := sqlite.OpenConn(":memory:")
 	if err != nil {
 		// handle error
 	}
@@ -72,7 +72,7 @@ func Example_withoutX() {
 }
 
 func ExampleConn_SetInterrupt() {
-	conn, err := sqlite.OpenConn(":memory:", sqlite.OpenReadWrite)
+	conn, err := sqlite.OpenConn(":memory:")
 	if err != nil {
 		panic(err)
 	}
@@ -86,7 +86,7 @@ func ExampleConn_SetInterrupt() {
 }
 
 func ExampleConn_CreateFunction() {
-	conn, err := sqlite.OpenConn(":memory:", sqlite.OpenReadWrite)
+	conn, err := sqlite.OpenConn(":memory:")
 	if err != nil {
 		// handle error
 	}
@@ -132,7 +132,7 @@ func ExampleConn_CreateFunction() {
 // This example shows the same regexp function as in the CreateFunction example,
 // but it uses auxiliary data to avoid recompiling the regular expression.
 func ExampleContext_AuxData() {
-	conn, err := sqlite.OpenConn(":memory:", sqlite.OpenReadWrite)
+	conn, err := sqlite.OpenConn(":memory:")
 	if err != nil {
 		// handle error
 	}
@@ -193,7 +193,7 @@ func ExampleContext_AuxData() {
 
 func ExampleBlob() {
 	// Create a new database with a "blobs" table with a single column, "myblob".
-	conn, err := sqlite.OpenConn(":memory:", sqlite.OpenReadWrite)
+	conn, err := sqlite.OpenConn(":memory:")
 	if err != nil {
 		// handle error
 	}
@@ -250,7 +250,7 @@ func ExampleBlob() {
 
 func ExampleConn_SetAuthorizer() {
 	// Create a new database.
-	conn, err := sqlite.OpenConn(":memory:", sqlite.OpenReadWrite)
+	conn, err := sqlite.OpenConn(":memory:")
 	if err != nil {
 		// handle error
 	}

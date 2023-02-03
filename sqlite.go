@@ -61,11 +61,10 @@ const ptrSize = types.Size_t(unsafe.Sizeof(uintptr(0)))
 // OpenConn opens a single SQLite database connection with the given flags.
 // No flags or a value of 0 defaults to the following:
 //
-//	OpenReadWrite
-//	OpenCreate
-//	OpenWAL
-//	OpenURI
-//	OpenNoMutex
+//   - [OpenReadWrite]
+//   - [OpenCreate]
+//   - [OpenWAL]
+//   - [OpenURI]
 //
 // https://www.sqlite.org/c3ref/open.html
 func OpenConn(path string, flags ...OpenFlags) (*Conn, error) {
@@ -74,10 +73,10 @@ func OpenConn(path string, flags ...OpenFlags) (*Conn, error) {
 		openFlags |= f
 	}
 	if openFlags == 0 {
-		openFlags = OpenReadWrite | OpenCreate | OpenWAL | OpenURI | OpenNoMutex
+		openFlags = OpenReadWrite | OpenCreate | OpenWAL | OpenURI
 	}
 
-	c, err := openConn(path, openFlags&^OpenWAL)
+	c, err := openConn(path, openFlags&^(OpenWAL|OpenFullMutex)|OpenNoMutex)
 	if err != nil {
 		return nil, err
 	}
@@ -678,10 +677,9 @@ func (stmt *Stmt) ClearBindings() error {
 //
 // https://www.sqlite.org/c3ref/step.html
 //
-// Shared cache
+// # Shared cache
 //
-// As the sqlite package enables shared cache mode by default
-// and multiple writers are common in multi-threaded programs,
+// As multiple writers are common in multi-threaded programs,
 // this Step method uses sqlite3_unlock_notify to handle any
 // SQLITE_LOCKED errors.
 //
@@ -869,13 +867,13 @@ func (stmt *Stmt) BindBytes(param int, value []byte) {
 // the memory representation described in https://golang.org/s/go11func.
 //
 // It does this by doing the following in order:
-// 1) Create a Go struct containing a pointer to a pointer to
-//    libc.Xfree. It is assumed that the pointer to libc.Xfree will be stored
-//    in the read-only data section and thus will not move.
-// 2) Convert the pointer to the Go struct to a pointer to uintptr through
-//    unsafe.Pointer. This is permitted via Rule #1 of unsafe.Pointer.
-// 3) Dereference the pointer to uintptr to obtain the function value as a
-//    uintptr. This is safe as long as function values are passed as pointers.
+//  1. Create a Go struct containing a pointer to a pointer to
+//     libc.Xfree. It is assumed that the pointer to libc.Xfree will be stored
+//     in the read-only data section and thus will not move.
+//  2. Convert the pointer to the Go struct to a pointer to uintptr through
+//     unsafe.Pointer. This is permitted via Rule #1 of unsafe.Pointer.
+//  3. Dereference the pointer to uintptr to obtain the function value as a
+//     uintptr. This is safe as long as function values are passed as pointers.
 var freeFuncPtr = *(*uintptr)(unsafe.Pointer(&struct {
 	f func(*libc.TLS, uintptr)
 }{libc.Xfree}))
@@ -1068,11 +1066,11 @@ func (stmt *Stmt) columnBytes(col int) []byte {
 
 // ColumnType are codes for each of the SQLite fundamental datatypes:
 //
-//   64-bit signed integer
-//   64-bit IEEE floating point number
-//   string
-//   BLOB
-//   NULL
+//   - 64-bit signed integer
+//   - 64-bit IEEE floating point number
+//   - string
+//   - BLOB
+//   - NULL
 //
 // https://www.sqlite.org/c3ref/c_blob.html
 type ColumnType int
@@ -1107,11 +1105,11 @@ func (t ColumnType) String() string {
 // ColumnType returns the datatype code for the initial data
 // type of the result column. The returned value is one of:
 //
-//   SQLITE_INTEGER
-//   SQLITE_FLOAT
-//   SQLITE_TEXT
-//   SQLITE_BLOB
-//   SQLITE_NULL
+//   - SQLITE_INTEGER
+//   - SQLITE_FLOAT
+//   - SQLITE_TEXT
+//   - SQLITE_BLOB
+//   - SQLITE_NULL
 //
 // Column indices start at 0.
 //
@@ -1329,10 +1327,10 @@ func (c *Conn) Limit(id Limit, value int32) int32 {
 // deliberately corrupt the database file are disabled. The disabled features
 // include but are not limited to the following:
 //
-//   The PRAGMA writable_schema=ON statement.
-//   The PRAGMA journal_mode=OFF statement.
-//   Writes to the sqlite_dbpage virtual table.
-//   Direct writes to shadow tables.
+//   - The PRAGMA writable_schema=ON statement.
+//   - The PRAGMA journal_mode=OFF statement.
+//   - Writes to the sqlite_dbpage virtual table.
+//   - Direct writes to shadow tables.
 func (c *Conn) SetDefensive(enabled bool) error {
 	if c == nil {
 		return fmt.Errorf("sqlite: set defensive=%t: nil connection", enabled)

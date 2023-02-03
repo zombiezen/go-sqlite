@@ -63,8 +63,7 @@ func Open(uri string, flags sqlite.OpenFlags, poolSize int) (pool *Pool, err err
 		flags = sqlite.OpenReadWrite |
 			sqlite.OpenCreate |
 			sqlite.OpenWAL |
-			sqlite.OpenURI |
-			sqlite.OpenNoMutex
+			sqlite.OpenURI
 	}
 
 	// TODO(maybe)

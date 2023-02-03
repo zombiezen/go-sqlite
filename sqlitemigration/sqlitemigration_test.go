@@ -23,7 +23,7 @@ func TestPool(t *testing.T) {
 		}
 		state := new(eventRecorder)
 		pool := NewPool(filepath.Join(t.TempDir(), "no-migrations.db"), schema, Options{
-			Flags:          sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
+			Flags:          sqlite.OpenReadWrite | sqlite.OpenCreate,
 			OnStartMigrate: state.startMigrateFunc(),
 			OnReady:        state.readyFunc(),
 		})
@@ -85,7 +85,7 @@ func TestPool(t *testing.T) {
 		}
 		state := new(eventRecorder)
 		pool := NewPool(filepath.Join(dir, "another.db"), schema, Options{
-			Flags:          sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
+			Flags:          sqlite.OpenReadWrite | sqlite.OpenCreate,
 			OnStartMigrate: state.startMigrateFunc(),
 			OnReady:        state.readyFunc(),
 		})
@@ -154,7 +154,7 @@ func TestPool(t *testing.T) {
 		// Run 1
 		dir := t.TempDir()
 		pool := NewPool(filepath.Join(dir, dbName), schema1, Options{
-			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
+			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate,
 		})
 		conn, err := pool.Get(ctx)
 		if err != nil {
@@ -168,7 +168,7 @@ func TestPool(t *testing.T) {
 
 		// Run 2
 		pool = NewPool(filepath.Join(dir, dbName), schema2, Options{
-			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
+			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate,
 		})
 		conn, err = pool.Get(ctx)
 		if err != nil {
@@ -200,7 +200,7 @@ func TestPool(t *testing.T) {
 		}
 		state := new(eventRecorder)
 		pool := NewPool(filepath.Join(t.TempDir(), "one-migration.db"), schema, Options{
-			Flags:          sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
+			Flags:          sqlite.OpenReadWrite | sqlite.OpenCreate,
 			OnStartMigrate: state.startMigrateFunc(),
 			OnReady:        state.readyFunc(),
 		})
@@ -242,7 +242,7 @@ func TestPool(t *testing.T) {
 		}
 		state := new(eventRecorder)
 		pool := NewPool(filepath.Join(t.TempDir(), "two-migrations.db"), schema, Options{
-			Flags:          sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
+			Flags:          sqlite.OpenReadWrite | sqlite.OpenCreate,
 			OnStartMigrate: state.startMigrateFunc(),
 			OnReady:        state.readyFunc(),
 		})
@@ -288,7 +288,7 @@ func TestPool(t *testing.T) {
 		state := new(eventRecorder)
 		dir := t.TempDir()
 		pool := NewPool(filepath.Join(dir, "partial-migration.db"), schema, Options{
-			Flags:          sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
+			Flags:          sqlite.OpenReadWrite | sqlite.OpenCreate,
 			OnStartMigrate: state.startMigrateFunc(),
 			OnReady:        state.readyFunc(),
 		})
@@ -348,7 +348,7 @@ func TestPool(t *testing.T) {
 		// Run 1
 		dir := t.TempDir()
 		pool := NewPool(filepath.Join(dir, "migrations-dont-repeat.db"), schema, Options{
-			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
+			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate,
 		})
 		conn, err := pool.Get(ctx)
 		if err != nil {
@@ -366,7 +366,7 @@ func TestPool(t *testing.T) {
 
 		// Run 2
 		pool = NewPool(filepath.Join(dir, "migrations-dont-repeat.db"), schema, Options{
-			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
+			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate,
 		})
 		conn, err = pool.Get(ctx)
 		if err != nil {
@@ -401,7 +401,7 @@ func TestPool(t *testing.T) {
 		// Run 1
 		dir := t.TempDir()
 		pool := NewPool(filepath.Join(dir, "incremental-migration.db"), schema1, Options{
-			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
+			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate,
 		})
 		conn, err := pool.Get(ctx)
 		if err != nil {
@@ -415,7 +415,7 @@ func TestPool(t *testing.T) {
 
 		// Run 2
 		pool = NewPool(filepath.Join(dir, "incremental-migration.db"), schema2, Options{
-			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
+			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate,
 		})
 		conn, err = pool.Get(ctx)
 		if err != nil {
@@ -457,7 +457,7 @@ func TestPool(t *testing.T) {
 		// Run 1
 		dir := t.TempDir()
 		pool := NewPool(filepath.Join(dir, "repeatable-incremental.db"), schema1, Options{
-			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
+			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate,
 		})
 		conn, err := pool.Get(ctx)
 		if err != nil {
@@ -471,7 +471,7 @@ func TestPool(t *testing.T) {
 
 		// Run 2
 		pool = NewPool(filepath.Join(dir, "repeatable-incremental.db"), schema2, Options{
-			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
+			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate,
 		})
 		conn, err = pool.Get(ctx)
 		if err != nil {
@@ -513,7 +513,7 @@ func TestPool(t *testing.T) {
 		// Run 1
 		dir := t.TempDir()
 		pool := NewPool(filepath.Join(dir, "repeatable-incremental.db"), schema1, Options{
-			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
+			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate,
 		})
 		conn, err := pool.Get(ctx)
 		if err != nil {
@@ -527,7 +527,7 @@ func TestPool(t *testing.T) {
 
 		// Run 2
 		pool = NewPool(filepath.Join(dir, "repeatable-incremental.db"), schema2, Options{
-			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
+			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate,
 		})
 		conn, err = pool.Get(ctx)
 		if err != nil {
@@ -569,7 +569,7 @@ func TestPool(t *testing.T) {
 		// Run 1
 		dbPath := filepath.Join(t.TempDir(), "repeatable-fail.db")
 		pool := NewPool(dbPath, schema1, Options{
-			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
+			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate,
 		})
 		conn, err := pool.Get(ctx)
 		if err != nil {
@@ -583,7 +583,7 @@ func TestPool(t *testing.T) {
 
 		// Run 2
 		pool = NewPool(dbPath, schema2, Options{
-			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
+			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate,
 		})
 		conn, err = pool.Get(ctx)
 		if err == nil {
@@ -631,7 +631,7 @@ func TestPool(t *testing.T) {
 		// Run 1
 		dir := t.TempDir()
 		pool := NewPool(filepath.Join(dir, "repeatable-sameversion.db"), schema1, Options{
-			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
+			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate,
 		})
 		conn, err := pool.Get(ctx)
 		if err != nil {
@@ -645,7 +645,7 @@ func TestPool(t *testing.T) {
 
 		// Run 2
 		pool = NewPool(filepath.Join(dir, "repeatable-sameversion.db"), schema2, Options{
-			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
+			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate,
 		})
 		conn, err = pool.Get(ctx)
 		if err != nil {
@@ -686,7 +686,7 @@ func TestPool(t *testing.T) {
 		// Run 1
 		dir := t.TempDir()
 		pool := NewPool(filepath.Join(dir, "future-version.db"), schema1, Options{
-			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
+			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate,
 		})
 		conn, err := pool.Get(ctx)
 		if err != nil {
@@ -700,7 +700,7 @@ func TestPool(t *testing.T) {
 
 		// Run 2
 		pool = NewPool(filepath.Join(dir, "future-version.db"), schema2, Options{
-			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
+			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate,
 		})
 		conn, err = pool.Get(ctx)
 		if err != nil {
@@ -732,7 +732,7 @@ func TestPool(t *testing.T) {
 			},
 		}
 		pool := NewPool(filepath.Join(t.TempDir(), "custom-schema-function.db"), schema, Options{
-			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
+			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate,
 			PrepareConn: func(conn *sqlite.Conn) error {
 				return conn.CreateFunction("theAnswer", &sqlite.FunctionImpl{
 					NArgs:         0,
@@ -771,7 +771,7 @@ func TestPool(t *testing.T) {
 			AppID: 0xedbeef,
 		}
 		pool := NewPool(filepath.Join(t.TempDir(), "custom-get-function.db"), schema, Options{
-			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
+			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate,
 			PrepareConn: func(conn *sqlite.Conn) error {
 				return conn.CreateFunction("theAnswer", &sqlite.FunctionImpl{
 					NArgs:         0,
@@ -816,7 +816,7 @@ func TestPool(t *testing.T) {
 			},
 		}
 		pool := NewPool(filepath.Join(t.TempDir(), "disable-foreign-keys.db"), schema, Options{
-			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
+			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate,
 			PrepareConn: func(conn *sqlite.Conn) error {
 				return sqlitex.ExecTransient(conn, "PRAGMA foreign_keys = on;", nil)
 			},
@@ -848,7 +848,7 @@ func TestPool(t *testing.T) {
 
 // withTestConn makes an independent connection to the given database.
 func withTestConn(dir, name string, f func(*sqlite.Conn) error) error {
-	conn, err := sqlite.OpenConn(filepath.Join(dir, name), sqlite.OpenReadWrite|sqlite.OpenCreate|sqlite.OpenNoMutex)
+	conn, err := sqlite.OpenConn(filepath.Join(dir, name), sqlite.OpenReadWrite|sqlite.OpenCreate)
 	if err != nil {
 		return err
 	}

@@ -47,7 +47,7 @@ func Example() {
 	// Open a pool. This does not block, and will start running any migrations
 	// asynchronously.
 	pool := sqlitemigration.NewPool(filepath.Join(dir, "foo.db"), schema, sqlitemigration.Options{
-		Flags: sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenNoMutex,
+		Flags: sqlite.OpenReadWrite | sqlite.OpenCreate,
 		PrepareConn: func(conn *sqlite.Conn) error {
 			// Enable foreign keys. See https://sqlite.org/foreignkeys.html
 			return sqlitex.ExecuteTransient(conn, "PRAGMA foreign_keys = ON;", nil)

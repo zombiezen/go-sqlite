@@ -12,7 +12,7 @@ import (
 )
 
 func ExampleExecute() {
-	conn, err := sqlite.OpenConn(":memory:", sqlite.OpenReadWrite|sqlite.OpenNoMutex)
+	conn, err := sqlite.OpenConn(":memory:")
 	if err != nil {
 		// handle err
 	}

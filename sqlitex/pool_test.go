@@ -40,7 +40,7 @@ const poolSize = 20
 // any error is t.Fatal.
 func newMemPool(t *testing.T) *sqlitex.Pool {
 	t.Helper()
-	flags := sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenURI | sqlite.OpenNoMutex | sqlite.OpenSharedCache
+	flags := sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenURI | sqlite.OpenSharedCache
 	dbpool, err := sqlitex.Open("file::memory:?mode=memory&cache=shared", flags, poolSize)
 	if err != nil {
 		t.Fatal(err)
@@ -258,7 +258,7 @@ func TestPoolPutMatch(t *testing.T) {
 // https://github.com/zombiezen/go-sqlite/issues/14
 func TestPoolWALClose(t *testing.T) {
 	dbName := filepath.Join(t.TempDir(), "wal-close.db")
-	pool, err := sqlitex.Open(dbName, sqlite.OpenReadWrite|sqlite.OpenCreate|sqlite.OpenNoMutex|sqlite.OpenWAL, 10)
+	pool, err := sqlitex.Open(dbName, sqlite.OpenReadWrite|sqlite.OpenCreate|sqlite.OpenWAL, 10)
 	if err != nil {
 		t.Fatal(err)
 	}

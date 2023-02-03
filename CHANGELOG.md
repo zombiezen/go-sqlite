@@ -11,8 +11,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Online backup API
+- Added support for the online backup API
   ([#47](https://github.com/zombiezen/go-sqlite/issues/47)).
+- Documented the `OpenFlags`.
+
+### Changed
+
+- `OpenNoMutex` and `OpenFullMutex` no longer have an effect on `sqlite.OpenConn`.
+  `OpenNoMutex` (i.e. [multi-thread mode](https://www.sqlite.org/threadsafe.html))
+  is now the only supported mode.
+  `*sqlite.Conn` has never been safe to use concurrently from multiple goroutines,
+  so this is mostly to prevent unnecessary locking and to avoid confusion.
+  ([#32](https://github.com/zombiezen/go-sqlite/issues/32)).
 
 ## [0.11.0][] - 2022-12-11
 
