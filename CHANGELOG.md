@@ -5,9 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-[Unreleased]: https://github.com/zombiezen/go-sqlite/compare/v0.11.0...main
+[Unreleased]: https://github.com/zombiezen/go-sqlite/compare/v0.12.0...main
 
-## [Unreleased][]
+## [0.12.0][] - 2023-02-08
+
+Version 0.12 added support for the [online backup API](https://www.sqlite.org/backup.html).
+
+[0.12.0]: https://github.com/zombiezen/go-sqlite/releases/tag/v0.12.0
 
 ### Added
 
