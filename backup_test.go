@@ -23,6 +23,7 @@ func TestBackup(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			defer src.Close()
 			err = sqlitex.ExecuteTransient(src, `CREATE TABLE foo (x INTEGER PRIMARY KEY NOT NULL);`, nil)
 			if err != nil {
 				t.Fatal(err)
@@ -36,6 +37,7 @@ func TestBackup(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			defer dst.Close()
 
 			backup, err := sqlite.NewBackup(dst, "", src, "")
 			if err != nil {
