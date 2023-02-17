@@ -1,8 +1,8 @@
-{ pkgs ? import (fetchTarball "https://github.com/NixOS/nixpkgs/archive/0e857e0089d78dee29818dc92722a72f1dea506f.tar.gz") {}
+{ pkgs ? import (fetchTarball "https://github.com/NixOS/nixpkgs/archive/8c66bd1b68f4708c90dcc97c6f7052a5a7b33257.tar.gz") {}
 }:
 
 pkgs.mkShell {
   packages = [
-    pkgs.go_1_19
+    pkgs.go_1_20
   ];
 }
