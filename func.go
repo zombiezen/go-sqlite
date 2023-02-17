@@ -722,6 +722,119 @@ func destroyAggregateFunc(tls *libc.TLS, id uintptr) {
 	xAggregateFactories.ids.reclaim(id)
 }
 
+// CollatingFunc is a [collating function/sequence],
+// that is, a function that compares two strings.
+// The function returns a negative number if a < b,
+// a positive number if a > b,
+// or zero if a == b.
+// A collating function must always return the same answer given the same inputs.
+// The collating function must obey the following properties for all strings A, B, and C:
+//
+//  1. If A==B then B==A.
+//  2. If A==B and B==C then A==C.
+//  3. If A<B then B>A.
+//  4. If A<B and B<C then A<C.
+//
+// [collating function/sequence]: https://www.sqlite.org/datatype3.html#collation
+type CollatingFunc func(a, b string) int
+
+// SetCollation sets the [collating function] for the given name.
+//
+// [collating function]: https://www.sqlite.org/datatype3.html#collation
+func (c *Conn) SetCollation(name string, compare CollatingFunc) error {
+	verb := "create"
+	if compare == nil {
+		verb = "remove"
+	}
+
+	if c == nil {
+		return fmt.Errorf("sqlite: %s collation: nil connection", verb)
+	}
+	if name == "" {
+		return fmt.Errorf("sqlite: %s collation: no name provided", verb)
+	}
+
+	cname, err := libc.CString(name)
+	if err != nil {
+		return fmt.Errorf("sqlite: %s collation: no name provided", verb)
+	}
+	defer libc.Xfree(c.tls, cname)
+
+	if compare == nil {
+		res := ResultCode(lib.Xsqlite3_create_collation_v2(
+			c.tls, c.conn, cname, lib.SQLITE_UTF8, 0, 0, 0,
+		))
+		if err := res.ToError(); err != nil {
+			return fmt.Errorf("sqlite: %s collation %s: %w", verb, name, err)
+		}
+		return nil
+	}
+
+	xcollations.mu.Lock()
+	id := xcollations.ids.next()
+	xcollations.m[id] = compare
+	xcollations.mu.Unlock()
+
+	// The following are conversions from function values to uintptr. It assumes
+	// the memory representation described in https://golang.org/s/go11func.
+	//
+	// It does this by doing the following in order:
+	// 1) Create a Go struct containing a pointer to a pointer to
+	//    the function. It is assumed that the pointer to the function will be
+	//    stored in the read-only data section and thus will not move.
+	// 2) Convert the pointer to the Go struct to a pointer to uintptr through
+	//    unsafe.Pointer. This is permitted via Rule #1 of unsafe.Pointer.
+	// 3) Dereference the pointer to uintptr to obtain the function value as a
+	//    uintptr. This is safe as long as function values are passed as pointers.
+	funcfn := *(*uintptr)(unsafe.Pointer(&struct {
+		f func(*libc.TLS, uintptr, int32, uintptr, int32, uintptr) int32
+	}{collationTrampoline}))
+	destroyfn := *(*uintptr)(unsafe.Pointer(&struct {
+		f func(*libc.TLS, uintptr)
+	}{destroyCollation}))
+
+	res := ResultCode(lib.Xsqlite3_create_collation_v2(
+		c.tls, c.conn, cname, lib.SQLITE_UTF8, id, funcfn, destroyfn,
+	))
+	if err := res.ToError(); err != nil {
+		destroyCollation(c.tls, id)
+		return fmt.Errorf("sqlite: %s collation %s: %w", verb, name, err)
+	}
+	return nil
+}
+
+var xcollations = struct {
+	mu  sync.RWMutex
+	m   map[uintptr]CollatingFunc
+	ids idGen
+}{
+	m: make(map[uintptr]CollatingFunc),
+}
+
+func collationTrampoline(tls *libc.TLS, id uintptr, n1 int32, p1 uintptr, n2 int32, p2 uintptr) int32 {
+	xcollations.mu.RLock()
+	f := xcollations.m[id]
+	xcollations.mu.RUnlock()
+
+	s1 := goStringN(p1, int(n1))
+	s2 := goStringN(p2, int(n2))
+	switch x := f(s1, s2); {
+	case x > 0:
+		return 1
+	case x < 0:
+		return -1
+	default:
+		return 0
+	}
+}
+
+func destroyCollation(tls *libc.TLS, id uintptr) {
+	xcollations.mu.Lock()
+	defer xcollations.mu.Unlock()
+	delete(xcollations.m, id)
+	xcollations.ids.reclaim(id)
+}
+
 // idGen is an ID generator. The zero value is ready to use.
 type idGen struct {
 	bitset []uint64

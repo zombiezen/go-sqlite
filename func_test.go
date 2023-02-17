@@ -19,6 +19,7 @@ package sqlite
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -351,6 +352,68 @@ func TestCastTextToReal(t *testing.T) {
 		if got := castTextToReal(test.text); got != test.want {
 			t.Errorf("castTextToReal(%q) = %g; want %g", test.text, got, test.want)
 		}
+	}
+}
+
+func TestSetCollation(t *testing.T) {
+	c, err := OpenConn(":memory:", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := c.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	err = c.SetCollation("foo", func(a, b string) int {
+		return -strings.Compare(a, b)
+	})
+	if err != nil {
+		t.Error(err)
+	}
+	stmt := c.Prep(`select ?1 < ?2 collate foo, ?1 = ?2 collate foo, ?1 > ?2 collate foo;`)
+	defer func() {
+		if err := stmt.Finalize(); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	tests := []struct {
+		name string
+		a    string
+		b    string
+		lt   bool
+		eq   bool
+		gt   bool
+	}{
+		{"Greater", "abc", "def", false, false, true},
+		{"Less", "def", "abc", true, false, false},
+		{"Equal", "abc", "abc", false, true, false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if err := stmt.Reset(); err != nil {
+				t.Error(err)
+			}
+			stmt.BindText(1, test.a)
+			stmt.BindText(2, test.b)
+			if _, err := stmt.Step(); err != nil {
+				t.Fatal(err)
+			}
+			lt := stmt.ColumnBool(0)
+			eq := stmt.ColumnBool(1)
+			gt := stmt.ColumnBool(2)
+			if lt != test.lt {
+				t.Errorf("%q < %q == %t; want %t", test.a, test.b, lt, test.lt)
+			}
+			if eq != test.eq {
+				t.Errorf("(%q == %q) == %t; want %t", test.a, test.b, eq, test.eq)
+			}
+			if gt != test.gt {
+				t.Errorf("%q > %q == %t; want %t", test.a, test.b, gt, test.gt)
+			}
+		})
 	}
 }
 
