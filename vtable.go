@@ -259,6 +259,27 @@ func (c *Conn) SetModule(name string, module *Module) error {
 	cmodPtr.FxDestroy = *(*uintptr)(unsafe.Pointer(&struct {
 		f func(tls *libc.TLS, pVTab uintptr) int32
 	}{vtabDestroy}))
+	cmodPtr.FxOpen = *(*uintptr)(unsafe.Pointer(&struct {
+		f func(tls *libc.TLS, pVTab uintptr, ppCursor uintptr) int32
+	}{vtabOpenTrampoline}))
+	cmodPtr.FxClose = *(*uintptr)(unsafe.Pointer(&struct {
+		f func(tls *libc.TLS, pCursor uintptr) int32
+	}{vtabCloseTrampoline}))
+	cmodPtr.FxFilter = *(*uintptr)(unsafe.Pointer(&struct {
+		f func(tls *libc.TLS, pCursor uintptr, idxNum int32, idxStr uintptr, argc int32, argv uintptr) int32
+	}{vtabFilterTrampoline}))
+	cmodPtr.FxNext = *(*uintptr)(unsafe.Pointer(&struct {
+		f func(tls *libc.TLS, pCursor uintptr) int32
+	}{vtabNextTrampoline}))
+	cmodPtr.FxEof = *(*uintptr)(unsafe.Pointer(&struct {
+		f func(tls *libc.TLS, pCursor uintptr) int32
+	}{vtabEOFTrampoline}))
+	cmodPtr.FxColumn = *(*uintptr)(unsafe.Pointer(&struct {
+		f func(tls *libc.TLS, pCursor uintptr, ctx uintptr, n int32) int32
+	}{vtabColumnTrampoline}))
+	cmodPtr.FxRowid = *(*uintptr)(unsafe.Pointer(&struct {
+		f func(tls *libc.TLS, pCursor uintptr, pRowid uintptr) int32
+	}{vtabRowIDTrampoline}))
 
 	xDestroy := *(*uintptr)(unsafe.Pointer(&struct {
 		f func(tls *libc.TLS, pAux uintptr)
@@ -371,7 +392,7 @@ func vtabBestIndexTrampoline(tls *libc.TLS, pVTab uintptr, infoPtr uintptr) int3
 	info := (*lib.Sqlite3_index_info)(unsafe.Pointer(infoPtr))
 	xvtables.mu.RLock()
 	vtab := xvtables.m[id]
-	xvtables.mu.RLock()
+	xvtables.mu.RUnlock()
 
 	// Convert inputs from C to Go.
 	inputs := &IndexInputs{
@@ -412,6 +433,128 @@ func vtabBestIndexTrampoline(tls *libc.TLS, pVTab uintptr, infoPtr uintptr) int3
 	return lib.SQLITE_OK
 }
 
+func vtabOpenTrampoline(tls *libc.TLS, pVTab uintptr, ppCursor uintptr) int32 {
+	vtabID := (*vtabWrapper)(unsafe.Pointer(pVTab)).id
+	xvtables.mu.RLock()
+	vtab := xvtables.m[vtabID]
+	xvtables.mu.RUnlock()
+
+	cursor, err := vtab.Open()
+	if err != nil {
+		return int32(ErrCode(err))
+	}
+
+	cursorWrapperSize := int32(unsafe.Sizeof(vtabWrapper{}))
+	pcursor := lib.Xsqlite3_malloc(tls, cursorWrapperSize)
+	*(*uintptr)(unsafe.Pointer(ppCursor)) = pcursor
+	if pcursor == 0 {
+		cursor.Close()
+		return lib.SQLITE_NOMEM
+	}
+	libc.Xmemset(tls, pcursor, 0, types.Size_t(cursorWrapperSize))
+
+	xcursors.mu.Lock()
+	cursorID := xcursors.ids.next()
+	xcursors.m[cursorID] = cursor
+	xcursors.mu.Unlock()
+	(*cursorWrapper)(unsafe.Pointer(pcursor)).id = cursorID
+
+	return lib.SQLITE_OK
+}
+
+func vtabCloseTrampoline(tls *libc.TLS, pCursor uintptr) int32 {
+	id := (*cursorWrapper)(unsafe.Pointer(pCursor)).id
+	xcursors.mu.Lock()
+	cur := xcursors.m[id]
+	delete(xcursors.m, id)
+	xcursors.ids.reclaim(id)
+	xcursors.mu.Unlock()
+
+	lib.Xsqlite3_free(tls, pCursor)
+	if err := cur.Close(); err != nil {
+		return int32(ErrCode(err))
+	}
+	return lib.SQLITE_OK
+}
+
+func vtabFilterTrampoline(tls *libc.TLS, pCursor uintptr, idxNum int32, idxStr uintptr, argc int32, argv uintptr) int32 {
+	id := (*cursorWrapper)(unsafe.Pointer(pCursor)).id
+	xcursors.mu.RLock()
+	cur := xcursors.m[id]
+	xcursors.mu.RUnlock()
+
+	idxID := IndexID{
+		Num:    idxNum,
+		String: libc.GoString(idxStr),
+	}
+	goArgv := make([]Value, 0, int(argc))
+	for ; len(goArgv) < cap(goArgv); argv += uintptr(ptrSize) {
+		goArgv = append(goArgv, Value{
+			tls:       tls,
+			ptrOrType: *(*uintptr)(unsafe.Pointer(argv)),
+		})
+	}
+	if err := cur.Filter(idxID, goArgv); err != nil {
+		return int32(ErrCode(err))
+	}
+	return lib.SQLITE_OK
+}
+
+func vtabNextTrampoline(tls *libc.TLS, pCursor uintptr) int32 {
+	id := (*cursorWrapper)(unsafe.Pointer(pCursor)).id
+	xcursors.mu.RLock()
+	cur := xcursors.m[id]
+	xcursors.mu.RUnlock()
+
+	if err := cur.Next(); err != nil {
+		return int32(ErrCode(err))
+	}
+	return lib.SQLITE_OK
+}
+
+func vtabEOFTrampoline(tls *libc.TLS, pCursor uintptr) int32 {
+	id := (*cursorWrapper)(unsafe.Pointer(pCursor)).id
+	xcursors.mu.RLock()
+	cur := xcursors.m[id]
+	xcursors.mu.RUnlock()
+
+	if cur.EOF() {
+		return 1
+	}
+	return 0
+}
+
+func vtabColumnTrampoline(tls *libc.TLS, pCursor uintptr, ctx uintptr, n int32) int32 {
+	id := (*cursorWrapper)(unsafe.Pointer(pCursor)).id
+	xcursors.mu.RLock()
+	cur := xcursors.m[id]
+	xcursors.mu.RUnlock()
+
+	goCtx := Context{tls: tls, ptr: ctx}
+	v, err := cur.Column(int(n))
+	if err != nil {
+		goCtx.result(TextValue(err.Error()), nil)
+		return int32(ErrCode(err))
+	}
+
+	goCtx.result(v, nil)
+	return lib.SQLITE_OK
+}
+
+func vtabRowIDTrampoline(tls *libc.TLS, pCursor uintptr, pRowid uintptr) int32 {
+	id := (*cursorWrapper)(unsafe.Pointer(pCursor)).id
+	xcursors.mu.RLock()
+	cur := xcursors.m[id]
+	xcursors.mu.RUnlock()
+
+	rowID, err := cur.RowID()
+	if err != nil {
+		return int32(ErrCode(err))
+	}
+	*(*int64)(unsafe.Pointer(pRowid)) = rowID
+	return lib.SQLITE_OK
+}
+
 func destroyModule(tls *libc.TLS, pAux uintptr) {
 	xmodules.mu.Lock()
 	xmodules.ids.reclaim(pAux)
@@ -421,6 +564,11 @@ func destroyModule(tls *libc.TLS, pAux uintptr) {
 
 type vtabWrapper struct {
 	base lib.Sqlite3_vtab
+	id   uintptr
+}
+
+type cursorWrapper struct {
+	base lib.Sqlite3_vtab_cursor
 	id   uintptr
 }
 
@@ -438,6 +586,13 @@ var (
 		ids idGen
 	}{
 		m: make(map[uintptr]VTable),
+	}
+	xcursors = struct {
+		mu  sync.RWMutex
+		m   map[uintptr]VTableCursor
+		ids idGen
+	}{
+		m: make(map[uintptr]VTableCursor),
 	}
 )
 
