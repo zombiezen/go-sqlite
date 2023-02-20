@@ -29,7 +29,7 @@ func ExampleVTable() {
 		`SELECT a, b FROM templatevtab ORDER BY rowid;`,
 		&sqlitex.ExecOptions{
 			ResultFunc: func(stmt *sqlite.Stmt) error {
-				fmt.Printf("%04d, %04d\n", stmt.ColumnInt(0), stmt.ColumnInt(1))
+				fmt.Printf("%4d, %4d\n", stmt.ColumnInt(0), stmt.ColumnInt(1))
 				return nil
 			},
 		},
