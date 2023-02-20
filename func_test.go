@@ -21,8 +21,10 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"unsafe"
 
 	"github.com/google/go-cmp/cmp"
+	"modernc.org/libc"
 )
 
 func TestFunc(t *testing.T) {
@@ -482,5 +484,15 @@ func TestIDGen(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestCFuncPointer verifies that the cFuncPointer function
+// is identical to taking the function address in the libc style.
+func TestCFuncPointer(t *testing.T) {
+	got := cFuncPointer(libc.Xfree)
+	want := *(*uintptr)(unsafe.Pointer(&struct{ f func(*libc.TLS, uintptr) }{libc.Xfree}))
+	if got != want {
+		t.Errorf("cFuncPointer(libc.Xfree) = %#x; want %#x", got, want)
 	}
 }
