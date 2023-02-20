@@ -13,6 +13,6 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v3
       with:
-        go-version: 1.16
+        go-version: "1.20"
     - name: Fetch release from proxy
       run: go get -d zombiezen.com/go/sqlite@"$(echo "$GITHUB_REF" | sed -e 's:^refs/tags/::')"
