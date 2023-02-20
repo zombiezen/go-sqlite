@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"unsafe"
 
 	"modernc.org/libc"
 	lib "modernc.org/sqlite/lib"
@@ -44,20 +43,7 @@ func (c *Conn) SetAuthorizer(auth Authorizer) error {
 	authorizers.m[c.conn] = auth
 	authorizers.mu.Unlock()
 
-	// The following is a conversion from function value to uintptr. It assumes
-	// the memory representation described in https://golang.org/s/go11func.
-	//
-	// It does this by doing the following in order:
-	// 1) Create a Go struct containing a pointer to a pointer to
-	//    authTrampoline. It is assumed that the pointer to authTrampoline will be
-	//    stored in the read-only data section and thus will not move.
-	// 2) Convert the pointer to the Go struct to a pointer to uintptr through
-	//    unsafe.Pointer. This is permitted via Rule #1 of unsafe.Pointer.
-	// 3) Dereference the pointer to uintptr to obtain the function value as a
-	//    uintptr. This is safe as long as function values are passed as pointers.
-	xAuth := *(*uintptr)(unsafe.Pointer(&struct {
-		f func(*libc.TLS, uintptr, int32, uintptr, uintptr, uintptr, uintptr) int32
-	}{authTrampoline}))
+	xAuth := cFuncPointer(authTrampoline)
 
 	res := ResultCode(lib.Xsqlite3_set_authorizer(c.tls, c.conn, xAuth, c.conn))
 	if err := res.ToError(); err != nil {

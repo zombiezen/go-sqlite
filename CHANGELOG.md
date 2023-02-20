@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support user-defined collating sequences
   ([#21](https://github.com/zombiezen/go-sqlite/issues/21)).
 
+### Changed
+
+- The minimum supported Go version for this library is now Go 1.19.
+
 ## [0.12.0][] - 2023-02-08
 
 Version 0.12 added support for the [online backup API](https://www.sqlite.org/backup.html).
