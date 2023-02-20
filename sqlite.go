@@ -1257,6 +1257,21 @@ func goStringN(s uintptr, n int) string {
 	return buf.String()
 }
 
+// cFuncPointer converts top-level function values to C pointers.
+func cFuncPointer[T any](f T) uintptr {
+	// This assumes the memory representation described in https://golang.org/s/go11func.
+	//
+	// cFuncPointer does its conversion by doing the following in order:
+	// 1) Create a Go struct containing a pointer to a pointer to
+	//    the function. It is assumed that the pointer to the function will be
+	//    stored in the read-only data section and thus will not move.
+	// 2) Convert the pointer to the Go struct to a pointer to uintptr through
+	//    unsafe.Pointer. This is permitted via Rule #1 of unsafe.Pointer.
+	// 3) Dereference the pointer to uintptr to obtain the function value as a
+	//    uintptr. This is safe as long as function values are passed as pointers.
+	return *(*uintptr)(unsafe.Pointer(&struct{ f T }{f}))
+}
+
 // Limit is a category of performance limits.
 //
 // https://sqlite.org/c3ref/c_limit_attached.html

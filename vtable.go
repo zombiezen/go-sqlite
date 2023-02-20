@@ -65,34 +65,49 @@ type VTable interface {
 	Destroy() error
 }
 
-type WriteableVTable interface {
+type WritableVTable interface {
 	VTable
 	Update(argv []Value) (rowID int64, err error)
 }
 
+// A TransactionVTable is a [VTable] that supports transactions.
 type TransactionVTable interface {
 	VTable
+
+	// Begin begins a transaction on a virtual table.
+	// Virtual table transactions do not nest,
+	// so the Begin method will not be invoked more than once
+	// on a single virtual table
+	// without an intervening call to either Commit or Rollback.
 	Begin() error
+	// Sync signals the start of a two-phase commit on a virtual table.
+	// This method is only invoked after a call to the Begin method
+	// and prior to a Commit or Rollback.
 	Sync() error
+	// Commit causes a virtual table transaction to commit.
 	Commit() error
+	// Rollback causes a virtual table transaction to rollback.
 	Rollback() error
 }
 
+// A SavepointVTable is a [VTable] that supports savepoints.
 type SavepointVTable interface {
 	TransactionVTable
+
+	// Savepoint signals that the virtual table
+	// should save its current state as savepoint N.
 	Savepoint(n int) error
+	// Release invalidates all savepoints greater than or equal to n.
 	Release(n int) error
+	// RollbackTo signals that the state of the virtual table
+	// should return to what it was when Savepoint(n) was last called.
+	// This invalidates all savepoints greater than n.
 	RollbackTo(n int) error
 }
 
 type RenameVTable interface {
 	VTable
 	Rename(new string) error
-}
-
-type ShadowVTable interface {
-	VTable
-	ShadowName(string) bool
 }
 
 type IndexInputs struct {
@@ -228,62 +243,39 @@ func (c *Conn) SetModule(name string, module *Module) error {
 	}
 
 	cmod := lib.Xsqlite3_malloc(c.tls, int32(unsafe.Sizeof(lib.Sqlite3_module{})))
+	if cmod == 0 {
+		return fmt.Errorf("sqlite: set module %q: %w", name, ResultNoMem.ToError())
+	}
+	libc.Xmemset(c.tls, cmod, 0, types.Size_t(unsafe.Sizeof(lib.Sqlite3_module{})))
+
 	cmodPtr := (*lib.Sqlite3_module)(unsafe.Pointer(cmod))
 	cmodPtr.FiVersion = 3
-
-	// The following are conversions from function values to uintptr. It assumes
-	// the memory representation described in https://golang.org/s/go11func.
-	//
-	// It does this by doing the following in order:
-	// 1) Create a Go struct containing a pointer to a pointer to
-	//    the function. It is assumed that the pointer to the function will be
-	//    stored in the read-only data section and thus will not move.
-	// 2) Convert the pointer to the Go struct to a pointer to uintptr through
-	//    unsafe.Pointer. This is permitted via Rule #1 of unsafe.Pointer.
-	// 3) Dereference the pointer to uintptr to obtain the function value as a
-	//    uintptr. This is safe as long as function values are passed as pointers.
 	if module.Create != nil {
-		cmodPtr.FxCreate = *(*uintptr)(unsafe.Pointer(&struct {
-			f func(tls *libc.TLS, db uintptr, pAux uintptr, argc int32, argv uintptr, ppVTab uintptr, pzErr uintptr) int32
-		}{vtabCreateTrampoline}))
+		cmodPtr.FxCreate = cFuncPointer(vtabCreateTrampoline)
 	}
-	cmodPtr.FxConnect = *(*uintptr)(unsafe.Pointer(&struct {
-		f func(tls *libc.TLS, db uintptr, pAux uintptr, argc int32, argv uintptr, ppVTab uintptr, pzErr uintptr) int32
-	}{vtabConnectTrampoline}))
-	cmodPtr.FxBestIndex = *(*uintptr)(unsafe.Pointer(&struct {
-		f func(tls *libc.TLS, pVTab uintptr, info uintptr) int32
-	}{vtabBestIndexTrampoline}))
-	cmodPtr.FxDisconnect = *(*uintptr)(unsafe.Pointer(&struct {
-		f func(tls *libc.TLS, pVTab uintptr) int32
-	}{vtabDisconnect}))
-	cmodPtr.FxDestroy = *(*uintptr)(unsafe.Pointer(&struct {
-		f func(tls *libc.TLS, pVTab uintptr) int32
-	}{vtabDestroy}))
-	cmodPtr.FxOpen = *(*uintptr)(unsafe.Pointer(&struct {
-		f func(tls *libc.TLS, pVTab uintptr, ppCursor uintptr) int32
-	}{vtabOpenTrampoline}))
-	cmodPtr.FxClose = *(*uintptr)(unsafe.Pointer(&struct {
-		f func(tls *libc.TLS, pCursor uintptr) int32
-	}{vtabCloseTrampoline}))
-	cmodPtr.FxFilter = *(*uintptr)(unsafe.Pointer(&struct {
-		f func(tls *libc.TLS, pCursor uintptr, idxNum int32, idxStr uintptr, argc int32, argv uintptr) int32
-	}{vtabFilterTrampoline}))
-	cmodPtr.FxNext = *(*uintptr)(unsafe.Pointer(&struct {
-		f func(tls *libc.TLS, pCursor uintptr) int32
-	}{vtabNextTrampoline}))
-	cmodPtr.FxEof = *(*uintptr)(unsafe.Pointer(&struct {
-		f func(tls *libc.TLS, pCursor uintptr) int32
-	}{vtabEOFTrampoline}))
-	cmodPtr.FxColumn = *(*uintptr)(unsafe.Pointer(&struct {
-		f func(tls *libc.TLS, pCursor uintptr, ctx uintptr, n int32) int32
-	}{vtabColumnTrampoline}))
-	cmodPtr.FxRowid = *(*uintptr)(unsafe.Pointer(&struct {
-		f func(tls *libc.TLS, pCursor uintptr, pRowid uintptr) int32
-	}{vtabRowIDTrampoline}))
+	cmodPtr.FxConnect = cFuncPointer(vtabConnectTrampoline)
+	cmodPtr.FxBestIndex = cFuncPointer(vtabBestIndexTrampoline)
+	cmodPtr.FxDisconnect = cFuncPointer(vtabDisconnect)
+	cmodPtr.FxDestroy = cFuncPointer(vtabDestroy)
+	cmodPtr.FxOpen = cFuncPointer(vtabOpenTrampoline)
+	cmodPtr.FxClose = cFuncPointer(vtabCloseTrampoline)
+	cmodPtr.FxFilter = cFuncPointer(vtabFilterTrampoline)
+	cmodPtr.FxNext = cFuncPointer(vtabNextTrampoline)
+	cmodPtr.FxEof = cFuncPointer(vtabEOFTrampoline)
+	cmodPtr.FxColumn = cFuncPointer(vtabColumnTrampoline)
+	cmodPtr.FxRowid = cFuncPointer(vtabRowIDTrampoline)
+	cmodPtr.FxBegin = cFuncPointer(vtabBeginTrampoline)
+	cmodPtr.FxSync = cFuncPointer(vtabSyncTrampoline)
+	cmodPtr.FxCommit = cFuncPointer(vtabCommitTrampoline)
+	cmodPtr.FxRollback = cFuncPointer(vtabRollbackTrampoline)
+	if module.CanRename {
+		cmodPtr.FxRename = cFuncPointer(vtabRenameTrampoline)
+	}
+	cmodPtr.FxSavepoint = cFuncPointer(vtabSavepointTrampoline)
+	cmodPtr.FxRelease = cFuncPointer(vtabReleaseTrampoline)
+	cmodPtr.FxRollbackTo = cFuncPointer(vtabRollbackToTrampoline)
 
-	xDestroy := *(*uintptr)(unsafe.Pointer(&struct {
-		f func(tls *libc.TLS, pAux uintptr)
-	}{destroyModule}))
+	xDestroy := cFuncPointer(destroyModule)
 
 	xmodules.mu.Lock()
 	defensiveCopy := new(Module)
@@ -352,9 +344,10 @@ func callConnectFunc(tls *libc.TLS, connect VTableConnectFunc, db uintptr, argc 
 	}
 	libc.Xmemset(tls, pvtab, 0, types.Size_t(vtabWrapperSize))
 
+	avt := assertVTable(vtab)
 	xvtables.mu.Lock()
 	id := xvtables.ids.next()
-	xvtables.m[id] = vtab
+	xvtables.m[id] = avt
 	xvtables.mu.Unlock()
 	(*vtabWrapper)(unsafe.Pointer(pvtab)).id = id
 
@@ -555,6 +548,118 @@ func vtabRowIDTrampoline(tls *libc.TLS, pCursor uintptr, pRowid uintptr) int32 {
 	return lib.SQLITE_OK
 }
 
+func vtabBeginTrampoline(tls *libc.TLS, pVTab uintptr) int32 {
+	vtabID := (*vtabWrapper)(unsafe.Pointer(pVTab)).id
+	xvtables.mu.RLock()
+	vtab := xvtables.m[vtabID]
+	xvtables.mu.RUnlock()
+
+	if vtab.Transaction != nil {
+		if err := vtab.Transaction.Begin(); err != nil {
+			return int32(ErrCode(err))
+		}
+	}
+	return lib.SQLITE_OK
+}
+
+func vtabSyncTrampoline(tls *libc.TLS, pVTab uintptr) int32 {
+	vtabID := (*vtabWrapper)(unsafe.Pointer(pVTab)).id
+	xvtables.mu.RLock()
+	vtab := xvtables.m[vtabID]
+	xvtables.mu.RUnlock()
+
+	if vtab.Transaction != nil {
+		if err := vtab.Transaction.Sync(); err != nil {
+			return int32(ErrCode(err))
+		}
+	}
+	return lib.SQLITE_OK
+}
+
+func vtabCommitTrampoline(tls *libc.TLS, pVTab uintptr) int32 {
+	vtabID := (*vtabWrapper)(unsafe.Pointer(pVTab)).id
+	xvtables.mu.RLock()
+	vtab := xvtables.m[vtabID]
+	xvtables.mu.RUnlock()
+
+	if vtab.Transaction != nil {
+		if err := vtab.Transaction.Commit(); err != nil {
+			return int32(ErrCode(err))
+		}
+	}
+	return lib.SQLITE_OK
+}
+
+func vtabRollbackTrampoline(tls *libc.TLS, pVTab uintptr) int32 {
+	vtabID := (*vtabWrapper)(unsafe.Pointer(pVTab)).id
+	xvtables.mu.RLock()
+	vtab := xvtables.m[vtabID]
+	xvtables.mu.RUnlock()
+
+	if vtab.Transaction != nil {
+		if err := vtab.Transaction.Rollback(); err != nil {
+			return int32(ErrCode(err))
+		}
+	}
+	return lib.SQLITE_OK
+}
+
+func vtabRenameTrampoline(tls *libc.TLS, pVTab uintptr, zNew uintptr) int32 {
+	vtabID := (*vtabWrapper)(unsafe.Pointer(pVTab)).id
+	xvtables.mu.RLock()
+	vtab := xvtables.m[vtabID]
+	xvtables.mu.RUnlock()
+
+	if vtab.Rename != nil {
+		if err := vtab.Rename.Rename(libc.GoString(zNew)); err != nil {
+			return int32(ErrCode(err))
+		}
+	}
+	return lib.SQLITE_OK
+}
+
+func vtabSavepointTrampoline(tls *libc.TLS, pVTab uintptr, n int32) int32 {
+	vtabID := (*vtabWrapper)(unsafe.Pointer(pVTab)).id
+	xvtables.mu.RLock()
+	vtab := xvtables.m[vtabID]
+	xvtables.mu.RUnlock()
+
+	if vtab.Savepoint != nil {
+		if err := vtab.Savepoint.Savepoint(int(n)); err != nil {
+			return int32(ErrCode(err))
+		}
+	}
+	return lib.SQLITE_OK
+}
+
+func vtabReleaseTrampoline(tls *libc.TLS, pVTab uintptr, n int32) int32 {
+	vtabID := (*vtabWrapper)(unsafe.Pointer(pVTab)).id
+	xvtables.mu.RLock()
+	vtab := xvtables.m[vtabID]
+	xvtables.mu.RUnlock()
+
+	if vtab.Savepoint != nil {
+		if err := vtab.Savepoint.Release(int(n)); err != nil {
+			return int32(ErrCode(err))
+		}
+	}
+	return lib.SQLITE_OK
+}
+
+func vtabRollbackToTrampoline(tls *libc.TLS, pVTab uintptr, n int32) int32 {
+	vtabID := (*vtabWrapper)(unsafe.Pointer(pVTab)).id
+	xvtables.mu.RLock()
+	vtab := xvtables.m[vtabID]
+	xvtables.mu.RUnlock()
+
+	if vtab.Savepoint != nil {
+		if err := vtab.Savepoint.RollbackTo(int(n)); err != nil {
+			return int32(ErrCode(err))
+		}
+	}
+	return lib.SQLITE_OK
+}
+
 func destroyModule(tls *libc.TLS, pAux uintptr) {
 	xmodules.mu.Lock()
 	delete(xmodules.m, pAux)
@@ -573,6 +678,23 @@ type cursorWrapper struct {
 	id   uintptr
 }
 
+type assertedVTable struct {
+	VTable
+	Write       WritableVTable
+	Transaction TransactionVTable
+	Savepoint   SavepointVTable
+	Rename      RenameVTable
+}
+
+func assertVTable(vtab VTable) assertedVTable {
+	avt := assertedVTable{VTable: vtab}
+	avt.Write, _ = vtab.(WritableVTable)
+	avt.Transaction, _ = vtab.(TransactionVTable)
+	avt.Savepoint, _ = vtab.(SavepointVTable)
+	avt.Rename, _ = vtab.(RenameVTable)
+	return avt
+}
+
 var (
 	xmodules = struct {
 		mu sync.RWMutex
@@ -582,10 +704,10 @@ var (
 	}
 	xvtables = struct {
 		mu  sync.RWMutex
-		m   map[uintptr]VTable
+		m   map[uintptr]assertedVTable
 		ids idGen
 	}{
-		m: make(map[uintptr]VTable),
+		m: make(map[uintptr]assertedVTable),
 	}
 	xcursors = struct {
 		mu  sync.RWMutex
