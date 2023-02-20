@@ -58,7 +58,7 @@ const (
 	seriesColumnStep
 )
 
-func seriesvtabConnect(c *sqlite.Conn, argv []string) (sqlite.VTable, *sqlite.VTableConfig, error) {
+func seriesvtabConnect(c *sqlite.Conn, opts *sqlite.VTableConnectOptions) (sqlite.VTable, *sqlite.VTableConfig, error) {
 	vtab := new(seriesvtab)
 	cfg := &sqlite.VTableConfig{
 		Declaration:   "CREATE TABLE x(value,start hidden,stop hidden,step hidden)",

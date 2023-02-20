@@ -58,7 +58,7 @@ const (
 	templatevarColumnB
 )
 
-func templatevtabConnect(c *sqlite.Conn, argv []string) (sqlite.VTable, *sqlite.VTableConfig, error) {
+func templatevtabConnect(c *sqlite.Conn, opts *sqlite.VTableConnectOptions) (sqlite.VTable, *sqlite.VTableConfig, error) {
 	vtab := new(templatevtab)
 	cfg := &sqlite.VTableConfig{
 		Declaration: "CREATE TABLE x(a,b)",

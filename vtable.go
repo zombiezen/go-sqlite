@@ -19,13 +19,44 @@ import (
 //
 // [virtual table]: https://sqlite.org/vtab.html
 type Module struct {
-	Connect   VTableConnectFunc
-	Create    VTableConnectFunc
-	Writable  bool
-	CanRename bool
+	// Connect establishes a connection to an existing virtual table.
+	// This is the only required field.
+	Connect VTableConnectFunc
+	// Create is called to create a new instance of the virtual table
+	// in response to a [CREATE VIRTUAL TABLE statement].
+	// If it is nil, then the virtual table is [eponymous].
+	// UseConnectAsCreate determines whether the virtual table is eponymous-only.
+	//
+	// [CREATE VIRTUAL TABLE statement]: https://sqlite.org/lang_createvtab.html
+	// [eponymous]: https://sqlite.org/vtab.html#epovtab
+	Create VTableConnectFunc
+	// If UseConnectAsCreate is true and Create is nil,
+	// then the virtual table is eponymous, but not eponymous-only.
+	// This means that the virtual table can still be given a name
+	// with CREATE VIRTUAL TABLE
+	// and indicates that the virtual table has no persistent state
+	// that needs to be created and destroyed.
+	UseConnectAsCreate bool
 }
 
-type VTableConnectFunc func(c *Conn, argv []string) (VTable, *VTableConfig, error)
+// VTableConnectFunc is a [Module.Connect] or [Module.Create] callback.
+type VTableConnectFunc func(*Conn, *VTableConnectOptions) (VTable, *VTableConfig, error)
+
+// VTableConnectOptions is the set of arguments to a [VTableConnectFunc].
+type VTableConnectOptions struct {
+	// ModuleName is the name of the [Module] being invoked.
+	ModuleName string
+	// DatabaseName is the name of the database in which the new virtual table is being created.
+	// The database name is "main" for the primary database,
+	// or "temp" for TEMP database,
+	// or the name given at the end of the ATTACH statement for attached databases.
+	DatabaseName string
+	// VTableName is the name of the name of the new virtual table.
+	// For eponymous virtual tables, this will be the same as ModuleName.
+	VTableName string
+	// Arguments passed to the CREATE VIRTUAL TABLE statement.
+	Args []string
+}
 
 // VTableConfig specifies the configuration of a [VTable] returned by [VTableConnectFunc].
 // [VTableConfig.Declaration] is the only required field.
@@ -250,10 +281,12 @@ func (c *Conn) SetModule(name string, module *Module) error {
 
 	cmodPtr := (*lib.Sqlite3_module)(unsafe.Pointer(cmod))
 	cmodPtr.FiVersion = 3
+	cmodPtr.FxConnect = cFuncPointer(vtabConnectTrampoline)
 	if module.Create != nil {
 		cmodPtr.FxCreate = cFuncPointer(vtabCreateTrampoline)
+	} else if module.UseConnectAsCreate {
+		cmodPtr.FxCreate = cmodPtr.FxConnect
 	}
-	cmodPtr.FxConnect = cFuncPointer(vtabConnectTrampoline)
 	cmodPtr.FxBestIndex = cFuncPointer(vtabBestIndexTrampoline)
 	cmodPtr.FxDisconnect = cFuncPointer(vtabDisconnect)
 	cmodPtr.FxDestroy = cFuncPointer(vtabDestroy)
@@ -268,9 +301,7 @@ func (c *Conn) SetModule(name string, module *Module) error {
 	cmodPtr.FxSync = cFuncPointer(vtabSyncTrampoline)
 	cmodPtr.FxCommit = cFuncPointer(vtabCommitTrampoline)
 	cmodPtr.FxRollback = cFuncPointer(vtabRollbackTrampoline)
-	if module.CanRename {
 		cmodPtr.FxRename = cFuncPointer(vtabRenameTrampoline)
-	}
 	cmodPtr.FxSavepoint = cFuncPointer(vtabSavepointTrampoline)
 	cmodPtr.FxRelease = cFuncPointer(vtabReleaseTrampoline)
 	cmodPtr.FxRollbackTo = cFuncPointer(vtabRollbackToTrampoline)
@@ -310,13 +341,31 @@ func callConnectFunc(tls *libc.TLS, connect VTableConnectFunc, db uintptr, argc 
 	c := allConns.table[db]
 	allConns.mu.RUnlock()
 
-	goArgv := make([]string, argc)
-	for i := range goArgv {
-		goArgv[i] = libc.GoString(*(*uintptr)(unsafe.Pointer(argv)))
+	options := new(VTableConnectOptions)
+	if argc > 0 {
+		options.ModuleName = libc.GoString(*(*uintptr)(unsafe.Pointer(argv)))
+		argc--
 		argv += uintptr(ptrSize)
 	}
+	if argc > 0 {
+		options.DatabaseName = libc.GoString(*(*uintptr)(unsafe.Pointer(argv)))
+		argc--
+		argv += uintptr(ptrSize)
+	}
+	if argc > 0 {
+		options.VTableName = libc.GoString(*(*uintptr)(unsafe.Pointer(argv)))
+		argc--
+		argv += uintptr(ptrSize)
+	}
+	if argc > 0 {
+		options.Args = make([]string, argc)
+		for i := range options.Args {
+			options.Args[i] = libc.GoString(*(*uintptr)(unsafe.Pointer(argv)))
+		argv += uintptr(ptrSize)
+		}
+	}
 
-	vtab, cfg, err := connect(c, goArgv)
+	vtab, cfg, err := connect(c, options)
 	if err != nil {
 		zerr, _ := sqliteCString(tls, err.Error())
 		*(*uintptr)(unsafe.Pointer(pzErr)) = zerr
@@ -657,11 +706,13 @@ func vtabRenameTrampoline(tls *libc.TLS, pVTab uintptr, zNew uintptr) int32 {
 	vtab := xvtables.m[vw.id]
 	xvtables.mu.RUnlock()
 
-	if vtab.Rename != nil {
+	if vtab.Rename == nil {
+		vw.setErrorMessage(tls, fmt.Sprintf("no Rename method for %T", vtab.VTable))
+		return lib.SQLITE_READONLY
+	}
 		if err := vtab.Rename.Rename(libc.GoString(zNew)); err != nil {
 			vw.setErrorMessage(tls, err.Error())
 			return int32(ErrCode(err))
-		}
 	}
 	return lib.SQLITE_OK
 }
