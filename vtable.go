@@ -381,10 +381,10 @@ func vtabDestroy(tls *libc.TLS, pVTab uintptr) int32 {
 }
 
 func vtabBestIndexTrampoline(tls *libc.TLS, pVTab uintptr, infoPtr uintptr) int32 {
-	id := (*vtabWrapper)(unsafe.Pointer(pVTab)).id
+	vw := (*vtabWrapper)(unsafe.Pointer(pVTab))
 	info := (*lib.Sqlite3_index_info)(unsafe.Pointer(infoPtr))
 	xvtables.mu.RLock()
-	vtab := xvtables.m[id]
+	vtab := xvtables.m[vw.id]
 	xvtables.mu.RUnlock()
 
 	// Convert inputs from C to Go.
@@ -415,9 +415,12 @@ func vtabBestIndexTrampoline(tls *libc.TLS, pVTab uintptr, infoPtr uintptr) int3
 
 	outputs, err := vtab.BestIndex(inputs)
 	if err != nil {
+		vw.setErrorMessage(tls, err.Error())
 		return int32(ErrCode(err))
 	}
 	if len(outputs.ConstraintUsage) > int(info.FnConstraint) {
+		vw.setErrorMessage(tls, fmt.Sprintf("len(ConstraintUsage) = %d (> %d)",
+			len(outputs.ConstraintUsage), info.FnConstraint))
 		return int32(ResultMisuse)
 	}
 
@@ -441,6 +444,7 @@ func vtabBestIndexTrampoline(tls *libc.TLS, pVTab uintptr, infoPtr uintptr) int3
 		var err error
 		info.FidxStr, err = sqliteCString(tls, outputs.ID.String)
 		if err != nil {
+			vw.setErrorMessage(tls, err.Error())
 			return int32(ErrCode(err))
 		}
 		info.FneedToFreeIdxStr = 1
@@ -458,13 +462,15 @@ func vtabBestIndexTrampoline(tls *libc.TLS, pVTab uintptr, infoPtr uintptr) int3
 }
 
 func vtabOpenTrampoline(tls *libc.TLS, pVTab uintptr, ppCursor uintptr) int32 {
-	vtabID := (*vtabWrapper)(unsafe.Pointer(pVTab)).id
+	vw := (*vtabWrapper)(unsafe.Pointer(pVTab))
+	vtabID := vw.id
 	xvtables.mu.RLock()
 	vtab := xvtables.m[vtabID]
 	xvtables.mu.RUnlock()
 
 	cursor, err := vtab.Open()
 	if err != nil {
+		vw.setErrorMessage(tls, err.Error())
 		return int32(ErrCode(err))
 	}
 
@@ -473,6 +479,7 @@ func vtabOpenTrampoline(tls *libc.TLS, pVTab uintptr, ppCursor uintptr) int32 {
 	*(*uintptr)(unsafe.Pointer(ppCursor)) = pcursor
 	if pcursor == 0 {
 		cursor.Close()
+		vw.setErrorMessage(tls, "no memory for cursor wrapper")
 		return lib.SQLITE_NOMEM
 	}
 	libc.Xmemset(tls, pcursor, 0, types.Size_t(cursorWrapperSize))
@@ -488,6 +495,7 @@ func vtabOpenTrampoline(tls *libc.TLS, pVTab uintptr, ppCursor uintptr) int32 {
 
 func vtabCloseTrampoline(tls *libc.TLS, pCursor uintptr) int32 {
 	id := (*cursorWrapper)(unsafe.Pointer(pCursor)).id
+	pVTab := (*cursorWrapper)(unsafe.Pointer(pCursor)).base.FpVtab
 	xcursors.mu.Lock()
 	cur := xcursors.m[id]
 	delete(xcursors.m, id)
@@ -496,15 +504,16 @@ func vtabCloseTrampoline(tls *libc.TLS, pCursor uintptr) int32 {
 
 	lib.Xsqlite3_free(tls, pCursor)
 	if err := cur.Close(); err != nil {
+		(*vtabWrapper)(unsafe.Pointer(pVTab)).setErrorMessage(tls, err.Error())
 		return int32(ErrCode(err))
 	}
 	return lib.SQLITE_OK
 }
 
 func vtabFilterTrampoline(tls *libc.TLS, pCursor uintptr, idxNum int32, idxStr uintptr, argc int32, argv uintptr) int32 {
-	id := (*cursorWrapper)(unsafe.Pointer(pCursor)).id
+	cw := (*cursorWrapper)(unsafe.Pointer(pCursor))
 	xcursors.mu.RLock()
-	cur := xcursors.m[id]
+	cur := xcursors.m[cw.id]
 	xcursors.mu.RUnlock()
 
 	idxID := IndexID{
@@ -519,18 +528,20 @@ func vtabFilterTrampoline(tls *libc.TLS, pCursor uintptr, idxNum int32, idxStr u
 		})
 	}
 	if err := cur.Filter(idxID, goArgv); err != nil {
+		cw.setErrorMessage(tls, err.Error())
 		return int32(ErrCode(err))
 	}
 	return lib.SQLITE_OK
 }
 
 func vtabNextTrampoline(tls *libc.TLS, pCursor uintptr) int32 {
-	id := (*cursorWrapper)(unsafe.Pointer(pCursor)).id
+	cw := (*cursorWrapper)(unsafe.Pointer(pCursor))
 	xcursors.mu.RLock()
-	cur := xcursors.m[id]
+	cur := xcursors.m[cw.id]
 	xcursors.mu.RUnlock()
 
 	if err := cur.Next(); err != nil {
+		cw.setErrorMessage(tls, err.Error())
 		return int32(ErrCode(err))
 	}
 	return lib.SQLITE_OK
@@ -566,13 +577,14 @@ func vtabColumnTrampoline(tls *libc.TLS, pCursor uintptr, ctx uintptr, n int32) 
 }
 
 func vtabRowIDTrampoline(tls *libc.TLS, pCursor uintptr, pRowid uintptr) int32 {
-	id := (*cursorWrapper)(unsafe.Pointer(pCursor)).id
+	cw := (*cursorWrapper)(unsafe.Pointer(pCursor))
 	xcursors.mu.RLock()
-	cur := xcursors.m[id]
+	cur := xcursors.m[cw.id]
 	xcursors.mu.RUnlock()
 
 	rowID, err := cur.RowID()
 	if err != nil {
+		cw.setErrorMessage(tls, err.Error())
 		return int32(ErrCode(err))
 	}
 	*(*int64)(unsafe.Pointer(pRowid)) = rowID
@@ -580,13 +592,14 @@ func vtabRowIDTrampoline(tls *libc.TLS, pCursor uintptr, pRowid uintptr) int32 {
 }
 
 func vtabBeginTrampoline(tls *libc.TLS, pVTab uintptr) int32 {
-	vtabID := (*vtabWrapper)(unsafe.Pointer(pVTab)).id
+	vw := (*vtabWrapper)(unsafe.Pointer(pVTab))
 	xvtables.mu.RLock()
-	vtab := xvtables.m[vtabID]
+	vtab := xvtables.m[vw.id]
 	xvtables.mu.RUnlock()
 
 	if vtab.Transaction != nil {
 		if err := vtab.Transaction.Begin(); err != nil {
+			vw.setErrorMessage(tls, err.Error())
 			return int32(ErrCode(err))
 		}
 	}
@@ -594,13 +607,14 @@ func vtabBeginTrampoline(tls *libc.TLS, pVTab uintptr) int32 {
 }
 
 func vtabSyncTrampoline(tls *libc.TLS, pVTab uintptr) int32 {
-	vtabID := (*vtabWrapper)(unsafe.Pointer(pVTab)).id
+	vw := (*vtabWrapper)(unsafe.Pointer(pVTab))
 	xvtables.mu.RLock()
-	vtab := xvtables.m[vtabID]
+	vtab := xvtables.m[vw.id]
 	xvtables.mu.RUnlock()
 
 	if vtab.Transaction != nil {
 		if err := vtab.Transaction.Sync(); err != nil {
+			vw.setErrorMessage(tls, err.Error())
 			return int32(ErrCode(err))
 		}
 	}
@@ -608,13 +622,14 @@ func vtabSyncTrampoline(tls *libc.TLS, pVTab uintptr) int32 {
 }
 
 func vtabCommitTrampoline(tls *libc.TLS, pVTab uintptr) int32 {
-	vtabID := (*vtabWrapper)(unsafe.Pointer(pVTab)).id
+	vw := (*vtabWrapper)(unsafe.Pointer(pVTab))
 	xvtables.mu.RLock()
-	vtab := xvtables.m[vtabID]
+	vtab := xvtables.m[vw.id]
 	xvtables.mu.RUnlock()
 
 	if vtab.Transaction != nil {
 		if err := vtab.Transaction.Commit(); err != nil {
+			vw.setErrorMessage(tls, err.Error())
 			return int32(ErrCode(err))
 		}
 	}
@@ -622,13 +637,14 @@ func vtabCommitTrampoline(tls *libc.TLS, pVTab uintptr) int32 {
 }
 
 func vtabRollbackTrampoline(tls *libc.TLS, pVTab uintptr) int32 {
-	vtabID := (*vtabWrapper)(unsafe.Pointer(pVTab)).id
+	vw := (*vtabWrapper)(unsafe.Pointer(pVTab))
 	xvtables.mu.RLock()
-	vtab := xvtables.m[vtabID]
+	vtab := xvtables.m[vw.id]
 	xvtables.mu.RUnlock()
 
 	if vtab.Transaction != nil {
 		if err := vtab.Transaction.Rollback(); err != nil {
+			vw.setErrorMessage(tls, err.Error())
 			return int32(ErrCode(err))
 		}
 	}
@@ -636,13 +652,14 @@ func vtabRollbackTrampoline(tls *libc.TLS, pVTab uintptr) int32 {
 }
 
 func vtabRenameTrampoline(tls *libc.TLS, pVTab uintptr, zNew uintptr) int32 {
-	vtabID := (*vtabWrapper)(unsafe.Pointer(pVTab)).id
+	vw := (*vtabWrapper)(unsafe.Pointer(pVTab))
 	xvtables.mu.RLock()
-	vtab := xvtables.m[vtabID]
+	vtab := xvtables.m[vw.id]
 	xvtables.mu.RUnlock()
 
 	if vtab.Rename != nil {
 		if err := vtab.Rename.Rename(libc.GoString(zNew)); err != nil {
+			vw.setErrorMessage(tls, err.Error())
 			return int32(ErrCode(err))
 		}
 	}
@@ -650,13 +667,14 @@ func vtabRenameTrampoline(tls *libc.TLS, pVTab uintptr, zNew uintptr) int32 {
 }
 
 func vtabSavepointTrampoline(tls *libc.TLS, pVTab uintptr, n int32) int32 {
-	vtabID := (*vtabWrapper)(unsafe.Pointer(pVTab)).id
+	vw := (*vtabWrapper)(unsafe.Pointer(pVTab))
 	xvtables.mu.RLock()
-	vtab := xvtables.m[vtabID]
+	vtab := xvtables.m[vw.id]
 	xvtables.mu.RUnlock()
 
 	if vtab.Savepoint != nil {
 		if err := vtab.Savepoint.Savepoint(int(n)); err != nil {
+			vw.setErrorMessage(tls, err.Error())
 			return int32(ErrCode(err))
 		}
 	}
@@ -664,13 +682,14 @@ func vtabSavepointTrampoline(tls *libc.TLS, pVTab uintptr, n int32) int32 {
 }
 
 func vtabReleaseTrampoline(tls *libc.TLS, pVTab uintptr, n int32) int32 {
-	vtabID := (*vtabWrapper)(unsafe.Pointer(pVTab)).id
+	vw := (*vtabWrapper)(unsafe.Pointer(pVTab))
 	xvtables.mu.RLock()
-	vtab := xvtables.m[vtabID]
+	vtab := xvtables.m[vw.id]
 	xvtables.mu.RUnlock()
 
 	if vtab.Savepoint != nil {
 		if err := vtab.Savepoint.Release(int(n)); err != nil {
+			vw.setErrorMessage(tls, err.Error())
 			return int32(ErrCode(err))
 		}
 	}
@@ -678,13 +697,14 @@ func vtabReleaseTrampoline(tls *libc.TLS, pVTab uintptr, n int32) int32 {
 }
 
 func vtabRollbackToTrampoline(tls *libc.TLS, pVTab uintptr, n int32) int32 {
-	vtabID := (*vtabWrapper)(unsafe.Pointer(pVTab)).id
+	vw := (*vtabWrapper)(unsafe.Pointer(pVTab))
 	xvtables.mu.RLock()
-	vtab := xvtables.m[vtabID]
+	vtab := xvtables.m[vw.id]
 	xvtables.mu.RUnlock()
 
 	if vtab.Savepoint != nil {
 		if err := vtab.Savepoint.RollbackTo(int(n)); err != nil {
+			vw.setErrorMessage(tls, err.Error())
 			return int32(ErrCode(err))
 		}
 	}
@@ -704,9 +724,21 @@ type vtabWrapper struct {
 	id   uintptr
 }
 
+func (vw *vtabWrapper) setErrorMessage(tls *libc.TLS, s string) {
+	if vw.base.FzErrMsg != 0 {
+		lib.Xsqlite3_free(tls, vw.base.FzErrMsg)
+	}
+	vw.base.FzErrMsg, _ = sqliteCString(tls, s)
+}
+
 type cursorWrapper struct {
 	base lib.Sqlite3_vtab_cursor
 	id   uintptr
+}
+
+func (cw *cursorWrapper) setErrorMessage(tls *libc.TLS, s string) {
+	vw := (*vtabWrapper)(unsafe.Pointer(cw.base.FpVtab))
+	vw.setErrorMessage(tls, s)
 }
 
 type assertedVTable struct {
