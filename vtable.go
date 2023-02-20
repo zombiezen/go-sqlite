@@ -286,13 +286,13 @@ func (c *Conn) SetModule(name string, module *Module) error {
 	}{destroyModule}))
 
 	xmodules.mu.Lock()
-	id := xmodules.ids.next()
 	defensiveCopy := new(Module)
 	*defensiveCopy = *module
-	xmodules.m[id] = defensiveCopy
+	// Module pointer address is unique for lifetime of module.
+	xmodules.m[cmod] = defensiveCopy
 	xmodules.mu.Unlock()
 
-	res := ResultCode(lib.Xsqlite3_create_module_v2(c.tls, c.conn, cname, cmod, id, xDestroy))
+	res := ResultCode(lib.Xsqlite3_create_module_v2(c.tls, c.conn, cname, cmod, cmod, xDestroy))
 	if err := res.ToError(); err != nil {
 		return fmt.Errorf("sqlite: set module %q: %w", name, err)
 	}
@@ -557,9 +557,10 @@ func vtabRowIDTrampoline(tls *libc.TLS, pCursor uintptr, pRowid uintptr) int32 {
 
 func destroyModule(tls *libc.TLS, pAux uintptr) {
 	xmodules.mu.Lock()
-	xmodules.ids.reclaim(pAux)
 	delete(xmodules.m, pAux)
 	xmodules.mu.Unlock()
+
+	lib.Xsqlite3_free(tls, pAux)
 }
 
 type vtabWrapper struct {
@@ -574,9 +575,8 @@ type cursorWrapper struct {
 
 var (
 	xmodules = struct {
-		mu  sync.RWMutex
-		m   map[uintptr]*Module
-		ids idGen
+		mu sync.RWMutex
+		m  map[uintptr]*Module
 	}{
 		m: make(map[uintptr]*Module),
 	}
