@@ -390,17 +390,49 @@ func vtabBestIndexTrampoline(tls *libc.TLS, pVTab uintptr, infoPtr uintptr) int3
 	// Convert inputs from C to Go.
 	inputs := &IndexInputs{
 		ColumnsUsed: info.FcolUsed,
-		// TODO(soon)
-		// Constraints: make([]IndexConstraint, info.FnConstraint),
-		// OrderBy:     make([]IndexOrderBy, info.FnOrderBy),
+		Constraints: make([]IndexConstraint, info.FnConstraint),
+		OrderBy:     make([]IndexOrderBy, info.FnOrderBy),
+	}
+	aConstraint := info.FaConstraint
+	for i := range inputs.Constraints {
+		c := (*lib.Sqlite3_index_constraint)(unsafe.Pointer(aConstraint))
+		inputs.Constraints[i] = IndexConstraint{
+			Column: int(c.FiColumn),
+			Op:     IndexConstraintOp(c.Fop),
+			Usable: c.Fusable != 0,
+		}
+		aConstraint += unsafe.Sizeof(lib.Sqlite3_index_constraint{})
+	}
+	aOrderBy := info.FaOrderBy
+	for i := range inputs.OrderBy {
+		o := (*lib.Sqlite3_index_orderby)(unsafe.Pointer(aOrderBy))
+		inputs.OrderBy[i] = IndexOrderBy{
+			Column: int(o.FiColumn),
+			Desc:   o.Fdesc != 0,
+		}
+		aOrderBy += unsafe.Sizeof(lib.Sqlite3_index_orderby{})
 	}
 
 	outputs, err := vtab.BestIndex(inputs)
 	if err != nil {
 		return int32(ErrCode(err))
 	}
+	if len(outputs.ConstraintUsage) > int(info.FnConstraint) {
+		return int32(ResultMisuse)
+	}
 
 	// Convert outputs from Go to C.
+	aConstraintUsage := info.FaConstraintUsage
+	for _, u := range outputs.ConstraintUsage {
+		ptr := (*lib.Sqlite3_index_constraint_usage)(unsafe.Pointer(aConstraintUsage))
+		ptr.FargvIndex = int32(u.ArgvIndex)
+		if u.Omit {
+			ptr.Fomit = 1
+		} else {
+			ptr.Fomit = 0
+		}
+		aConstraintUsage += unsafe.Sizeof(lib.Sqlite3_index_constraint_usage{})
+	}
 	info.FidxNum = outputs.ID.Num
 	if len(outputs.ID.String) == 0 {
 		info.FidxStr = 0
@@ -421,7 +453,6 @@ func vtabBestIndexTrampoline(tls *libc.TLS, pVTab uintptr, infoPtr uintptr) int3
 	info.FestimatedCost = outputs.EstimatedCost
 	info.FestimatedRows = outputs.EstimatedRows
 	info.FidxFlags = int32(outputs.IndexFlags)
-	// TODO(soon): ConstraintUsage
 
 	return lib.SQLITE_OK
 }
