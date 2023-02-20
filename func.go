@@ -102,20 +102,7 @@ func (ctx Context) SetAuxData(arg int, data interface{}) {
 	auxdata.m[id] = data
 	auxdata.mu.Unlock()
 
-	// The following is a conversion from function value to uintptr. It assumes
-	// the memory representation described in https://golang.org/s/go11func.
-	//
-	// It does this by doing the following in order:
-	// 1) Create a Go struct containing a pointer to a pointer to
-	//    freeAuxData. It is assumed that the pointer to freeAuxData will be
-	//    stored in the read-only data section and thus will not move.
-	// 2) Convert the pointer to the Go struct to a pointer to uintptr through
-	//    unsafe.Pointer. This is permitted via Rule #1 of unsafe.Pointer.
-	// 3) Dereference the pointer to uintptr to obtain the function value as a
-	//    uintptr. This is safe as long as function values are passed as pointers.
-	deleteFn := *(*uintptr)(unsafe.Pointer(&struct {
-		f func(*libc.TLS, uintptr)
-	}{freeAuxData}))
+	deleteFn := cFuncPointer(freeAuxData)
 
 	lib.Xsqlite3_set_auxdata(ctx.tls, ctx.ptr, int32(arg), id, deleteFn)
 }
@@ -482,24 +469,6 @@ func (c *Conn) CreateFunction(name string, impl *FunctionImpl) error {
 		xfuncs.m[id] = impl.Scalar
 		xfuncs.mu.Unlock()
 
-		// The following are conversions from function values to uintptr. It assumes
-		// the memory representation described in https://golang.org/s/go11func.
-		//
-		// It does this by doing the following in order:
-		// 1) Create a Go struct containing a pointer to a pointer to
-		//    the function. It is assumed that the pointer to the function will be
-		//    stored in the read-only data section and thus will not move.
-		// 2) Convert the pointer to the Go struct to a pointer to uintptr through
-		//    unsafe.Pointer. This is permitted via Rule #1 of unsafe.Pointer.
-		// 3) Dereference the pointer to uintptr to obtain the function value as a
-		//    uintptr. This is safe as long as function values are passed as pointers.
-		funcfn := *(*uintptr)(unsafe.Pointer(&struct {
-			f func(*libc.TLS, uintptr, int32, uintptr)
-		}{funcTrampoline}))
-		destroyfn := *(*uintptr)(unsafe.Pointer(&struct {
-			f func(*libc.TLS, uintptr)
-		}{destroyScalarFunc}))
-
 		res = ResultCode(lib.Xsqlite3_create_function_v2(
 			c.tls,
 			c.conn,
@@ -507,43 +476,16 @@ func (c *Conn) CreateFunction(name string, impl *FunctionImpl) error {
 			int32(numArgs),
 			eTextRep,
 			id,
-			funcfn,
+			cFuncPointer(funcTrampoline),
 			0,
 			0,
-			destroyfn,
+			cFuncPointer(destroyScalarFunc),
 		))
 	} else {
 		xAggregateFactories.mu.Lock()
 		id := xAggregateFactories.ids.next()
 		xAggregateFactories.m[id] = impl.MakeAggregate
 		xAggregateFactories.mu.Unlock()
-
-		// The following are conversions from function values to uintptr. It assumes
-		// the memory representation described in https://golang.org/s/go11func.
-		//
-		// It does this by doing the following in order:
-		// 1) Create a Go struct containing a pointer to a pointer to
-		//    the function. It is assumed that the pointer to the function will be
-		//    stored in the read-only data section and thus will not move.
-		// 2) Convert the pointer to the Go struct to a pointer to uintptr through
-		//    unsafe.Pointer. This is permitted via Rule #1 of unsafe.Pointer.
-		// 3) Dereference the pointer to uintptr to obtain the function value as a
-		//    uintptr. This is safe as long as function values are passed as pointers.
-		stepfn := *(*uintptr)(unsafe.Pointer(&struct {
-			f func(*libc.TLS, uintptr, int32, uintptr)
-		}{stepTrampoline}))
-		finalfn := *(*uintptr)(unsafe.Pointer(&struct {
-			f func(*libc.TLS, uintptr)
-		}{finalTrampoline}))
-		inversefn := *(*uintptr)(unsafe.Pointer(&struct {
-			f func(*libc.TLS, uintptr, int32, uintptr)
-		}{inverseTrampoline}))
-		valuefn := *(*uintptr)(unsafe.Pointer(&struct {
-			f func(*libc.TLS, uintptr)
-		}{valueTrampoline}))
-		destroyfn := *(*uintptr)(unsafe.Pointer(&struct {
-			f func(*libc.TLS, uintptr)
-		}{destroyAggregateFunc}))
 
 		res = ResultCode(lib.Xsqlite3_create_window_function(
 			c.tls,
@@ -552,11 +494,11 @@ func (c *Conn) CreateFunction(name string, impl *FunctionImpl) error {
 			int32(numArgs),
 			eTextRep,
 			id,
-			stepfn,
-			finalfn,
-			valuefn,
-			inversefn,
-			destroyfn,
+			cFuncPointer(stepTrampoline),
+			cFuncPointer(finalTrampoline),
+			cFuncPointer(valueTrampoline),
+			cFuncPointer(inverseTrampoline),
+			cFuncPointer(destroyAggregateFunc),
 		))
 	}
 	if err := res.ToError(); err != nil {
@@ -775,26 +717,8 @@ func (c *Conn) SetCollation(name string, compare CollatingFunc) error {
 	xcollations.m[id] = compare
 	xcollations.mu.Unlock()
 
-	// The following are conversions from function values to uintptr. It assumes
-	// the memory representation described in https://golang.org/s/go11func.
-	//
-	// It does this by doing the following in order:
-	// 1) Create a Go struct containing a pointer to a pointer to
-	//    the function. It is assumed that the pointer to the function will be
-	//    stored in the read-only data section and thus will not move.
-	// 2) Convert the pointer to the Go struct to a pointer to uintptr through
-	//    unsafe.Pointer. This is permitted via Rule #1 of unsafe.Pointer.
-	// 3) Dereference the pointer to uintptr to obtain the function value as a
-	//    uintptr. This is safe as long as function values are passed as pointers.
-	funcfn := *(*uintptr)(unsafe.Pointer(&struct {
-		f func(*libc.TLS, uintptr, int32, uintptr, int32, uintptr) int32
-	}{collationTrampoline}))
-	destroyfn := *(*uintptr)(unsafe.Pointer(&struct {
-		f func(*libc.TLS, uintptr)
-	}{destroyCollation}))
-
 	res := ResultCode(lib.Xsqlite3_create_collation_v2(
-		c.tls, c.conn, cname, lib.SQLITE_UTF8, id, funcfn, destroyfn,
+		c.tls, c.conn, cname, lib.SQLITE_UTF8, id, cFuncPointer(collationTrampoline), cFuncPointer(destroyCollation),
 	))
 	if err := res.ToError(); err != nil {
 		destroyCollation(c.tls, id)

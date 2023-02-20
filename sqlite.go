@@ -363,20 +363,7 @@ func (c *Conn) setBusyHandler(handler func(count int) bool) {
 		return
 	}
 	busyHandlers.Store(c.conn, handler)
-	// The following is a conversion from function value to uintptr.
-	// It assumes the memory representation described in https://golang.org/s/go11func.
-	//
-	// It does this by doing the following in order:
-	// 1) Create a Go struct containing a pointer to a pointer to busyHandlerCallback.
-	//    It is assumed that the pointer to busyHandlerCallback
-	//    will be stored in the read-only data section and thus will not move.
-	// 2) Convert the pointer to the Go struct to a pointer to uintptr through
-	//    unsafe.Pointer. This is permitted via Rule #1 of unsafe.Pointer.
-	// 3) Dereference the pointer to uintptr to obtain the function value as a
-	//    uintptr. This is safe as long as function values are passed as pointers.
-	xBusy := *(*uintptr)(unsafe.Pointer(&struct {
-		f func(*libc.TLS, uintptr, int32) int32
-	}{busyHandlerCallback}))
+	xBusy := cFuncPointer(busyHandlerCallback)
 	lib.Xsqlite3_busy_handler(c.tls, c.conn, xBusy, c.conn)
 }
 
@@ -863,20 +850,7 @@ func (stmt *Stmt) BindBytes(param int, value []byte) {
 	stmt.handleBindErr("bind bytes", res)
 }
 
-// freeFuncPtr is a conversion from function value to uintptr. It assumes
-// the memory representation described in https://golang.org/s/go11func.
-//
-// It does this by doing the following in order:
-//  1. Create a Go struct containing a pointer to a pointer to
-//     libc.Xfree. It is assumed that the pointer to libc.Xfree will be stored
-//     in the read-only data section and thus will not move.
-//  2. Convert the pointer to the Go struct to a pointer to uintptr through
-//     unsafe.Pointer. This is permitted via Rule #1 of unsafe.Pointer.
-//  3. Dereference the pointer to uintptr to obtain the function value as a
-//     uintptr. This is safe as long as function values are passed as pointers.
-var freeFuncPtr = *(*uintptr)(unsafe.Pointer(&struct {
-	f func(*libc.TLS, uintptr)
-}{libc.Xfree}))
+var freeFuncPtr = cFuncPointer(libc.Xfree)
 
 // BindText binds value to a numbered stmt parameter.
 //
@@ -1255,6 +1229,22 @@ func goStringN(s uintptr, n int) string {
 		s++
 	}
 	return buf.String()
+}
+
+// cFuncPointer converts a function defined by a function declaration to a C pointer.
+// The result of using cFuncPointer on closures is undefined.
+func cFuncPointer[T any](f T) uintptr {
+	// This assumes the memory representation described in https://golang.org/s/go11func.
+	//
+	// cFuncPointer does its conversion by doing the following in order:
+	// 1) Create a Go struct containing a pointer to a pointer to
+	//    the function. It is assumed that the pointer to the function will be
+	//    stored in the read-only data section and thus will not move.
+	// 2) Convert the pointer to the Go struct to a pointer to uintptr through
+	//    unsafe.Pointer. This is permitted via Rule #1 of unsafe.Pointer.
+	// 3) Dereference the pointer to uintptr to obtain the function value as a
+	//    uintptr. This is safe as long as function values are passed as pointers.
+	return *(*uintptr)(unsafe.Pointer(&struct{ f T }{f}))
 }
 
 // Limit is a category of performance limits.
