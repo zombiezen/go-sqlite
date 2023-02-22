@@ -370,6 +370,7 @@ type FunctionImpl struct {
 	NArgs int
 
 	// Scalar is called when a scalar function is invoked in SQL.
+	// The argument Values are not valid past the return of the function.
 	Scalar func(ctx Context, args []Value) (Value, error)
 
 	// MakeAggregate is called at the beginning of an evaluation of an aggregate function.
@@ -404,12 +405,14 @@ type FunctionImpl struct {
 type AggregateFunction interface {
 	// Step is called for each row
 	// of an aggregate function's SQL invocation.
+	// The argument Values are not valid past the return of the function.
 	Step(ctx Context, rowArgs []Value) error
 
 	// WindowInverse is called to remove
 	// the oldest presently aggregated result of Step
 	// from the current window.
 	// The arguments are those passed to Step for the row being removed.
+	// The argument Values are not valid past the return of the function.
 	WindowInverse(ctx Context, rowArgs []Value) error
 
 	// WindowValue is called to get the current value of an aggregate window function.
