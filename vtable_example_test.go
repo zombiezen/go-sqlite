@@ -99,7 +99,7 @@ func (cur *templatevtabCursor) Next() error {
 	return nil
 }
 
-func (cur *templatevtabCursor) Column(i int) (sqlite.Value, error) {
+func (cur *templatevtabCursor) Column(i int, noChange bool) (sqlite.Value, error) {
 	switch i {
 	case templatevarColumnA:
 		return sqlite.IntegerValue(1000 + cur.rowid), nil

@@ -70,7 +70,8 @@ type VTableConfig struct {
 	Declaration string
 
 	// If ConstraintSupport is true, then the virtual table implementation
-	// guarantees that if Update returns a [ResultConstraint] error,
+	// guarantees that if [WritableVTable.Update] or [WritableVTable.DeleteRow]
+	// returns a [ResultConstraint] error,
 	// it will do so before any modifications to internal or persistent data structures
 	// have been made.
 	ConstraintSupport bool
@@ -96,9 +97,25 @@ type VTable interface {
 	Destroy() error
 }
 
+// VTableUpdateParams is the set of parameters to the [WritableVTable.Update] method.
+type VTableUpdateParams struct {
+	OldRowID Value
+	NewRowID Value
+	Columns  []Value
+}
+
+// IsInsert reports whether the arguments represent an INSERT.
+// If not, then the arguments represent an UPDATE.
+func (p VTableUpdateParams) IsInsert() bool {
+	return p.OldRowID.Type() == TypeNull
+}
+
+// A WritableVTable is a [VTable] that supports modifications.
 type WritableVTable interface {
 	VTable
-	Update(argv []Value) (rowID int64, err error)
+
+	Update(params VTableUpdateParams) (rowID int64, err error)
+	DeleteRow(rowID Value) error
 }
 
 // A TransactionVTable is a [VTable] that supports transactions.
@@ -202,10 +219,15 @@ type IndexOutputs struct {
 	// A cost of log(N) indicates that the expense of the operation
 	// is similar to that of a binary search on a unique indexed field
 	// of an SQLite table with N rows.
+	// A negative or zero cost uses a large default cost unless UseZeroEstimates is true.
 	EstimatedCost float64
 	// EstimatedRows is an estimate of the number of rows
 	// that will be returned by the strategy.
+	// A negative or zero estimate uses 25 unless UseZeroEstimates is true.
 	EstimatedRows int64
+	// If UseZeroEstimates is true and EstimatedCost or EstimatedRows is zero,
+	// then the zeroes will be used instead of being interpreted as defaults.
+	UseZeroEstimates bool
 	// IndexFlags is a bitmask of other flags about the index.
 	IndexFlags IndexFlags
 }
@@ -230,6 +252,7 @@ type IndexConstraintUsage struct {
 
 // IndexID is a virtual table index identifier.
 // The meaning of its fields is defined by the virtual table implementation.
+// String cannot contain NUL bytes.
 type IndexID struct {
 	Num    int32
 	String string
@@ -242,12 +265,31 @@ const (
 	IndexScanUnique IndexFlags = lib.SQLITE_INDEX_SCAN_UNIQUE
 )
 
+// VTableCursor is a cursor over a [VTable] used to loop through the table.
 type VTableCursor interface {
+	// Filter begins a search of a virtual table.
+	// The ID is one that is returned by [VTable.BestIndex].
+	// The arguments will be populated as specified by [IndexOutputs.ConstraintUsage].
 	Filter(id IndexID, argv []Value) error
+	// Next advances the cursor to the next row of a result set
+	// initiated by [VTableCursor.Filter].
+	// If the cursor is already pointing at the last row when this routine is called,
+	// then the cursor no longer points to valid data
+	// and a subsequent call to the [VTableCursor.EOF] method must return true.
 	Next() error
-	Column(i int) (Value, error)
+	// Column returns the value for the i-th column of the current row.
+	// Column indices start at 0.
+	//
+	// If noChange is true, then the column access is part of an UPDATE operation
+	// during which the column value will not change.
+	// This can be used as a hint to return [Unchanged] instead of fetching the value:
+	// [WritableVTable.Update] implementations can check [Value.NoChange] to test for this condition.
+	Column(i int, noChange bool) (Value, error)
+	// RowID returns the row ID of the row that the cursor is currently pointing at.
 	RowID() (int64, error)
+	// EOF reports if the cursor is not pointing to a valid row of data.
 	EOF() bool
+	// Close releases any resources associated with the cursor.
 	Close() error
 }
 
@@ -297,11 +339,12 @@ func (c *Conn) SetModule(name string, module *Module) error {
 	cmodPtr.FxEof = cFuncPointer(vtabEOFTrampoline)
 	cmodPtr.FxColumn = cFuncPointer(vtabColumnTrampoline)
 	cmodPtr.FxRowid = cFuncPointer(vtabRowIDTrampoline)
+	cmodPtr.FxUpdate = cFuncPointer(vtabUpdateTrampoline)
 	cmodPtr.FxBegin = cFuncPointer(vtabBeginTrampoline)
 	cmodPtr.FxSync = cFuncPointer(vtabSyncTrampoline)
 	cmodPtr.FxCommit = cFuncPointer(vtabCommitTrampoline)
 	cmodPtr.FxRollback = cFuncPointer(vtabRollbackTrampoline)
-		cmodPtr.FxRename = cFuncPointer(vtabRenameTrampoline)
+	cmodPtr.FxRename = cFuncPointer(vtabRenameTrampoline)
 	cmodPtr.FxSavepoint = cFuncPointer(vtabSavepointTrampoline)
 	cmodPtr.FxRelease = cFuncPointer(vtabReleaseTrampoline)
 	cmodPtr.FxRollbackTo = cFuncPointer(vtabRollbackToTrampoline)
@@ -361,7 +404,7 @@ func callConnectFunc(tls *libc.TLS, connect VTableConnectFunc, db uintptr, argc 
 		options.Args = make([]string, argc)
 		for i := range options.Args {
 			options.Args[i] = libc.GoString(*(*uintptr)(unsafe.Pointer(argv)))
-		argv += uintptr(ptrSize)
+			argv += uintptr(ptrSize)
 		}
 	}
 
@@ -503,8 +546,12 @@ func vtabBestIndexTrampoline(tls *libc.TLS, pVTab uintptr, infoPtr uintptr) int3
 	} else {
 		info.ForderByConsumed = 0
 	}
-	info.FestimatedCost = outputs.EstimatedCost
-	info.FestimatedRows = outputs.EstimatedRows
+	if outputs.EstimatedCost > 0 || outputs.UseZeroEstimates {
+		info.FestimatedCost = outputs.EstimatedCost
+	}
+	if outputs.EstimatedRows > 0 || outputs.UseZeroEstimates {
+		info.FestimatedRows = outputs.EstimatedRows
+	}
 	info.FidxFlags = int32(outputs.IndexFlags)
 
 	return lib.SQLITE_OK
@@ -615,12 +662,17 @@ func vtabColumnTrampoline(tls *libc.TLS, pCursor uintptr, ctx uintptr, n int32) 
 	xcursors.mu.RUnlock()
 
 	goCtx := Context{tls: tls, ptr: ctx}
-	v, err := cur.Column(int(n))
+	noChange := lib.Xsqlite3_vtab_nochange(tls, ctx) != 0
+	v, err := cur.Column(int(n), noChange)
 	if err != nil {
 		goCtx.result(TextValue(err.Error()), nil)
 		return int32(ErrCode(err))
 	}
 
+	if noChange && v.tls == nil && v.NoChange() {
+		// Skip calling a result function if the method returns Unchanged.
+		return lib.SQLITE_OK
+	}
 	goCtx.result(v, nil)
 	return lib.SQLITE_OK
 }
@@ -637,6 +689,61 @@ func vtabRowIDTrampoline(tls *libc.TLS, pCursor uintptr, pRowid uintptr) int32 {
 		return int32(ErrCode(err))
 	}
 	*(*int64)(unsafe.Pointer(pRowid)) = rowID
+	return lib.SQLITE_OK
+}
+
+func vtabUpdateTrampoline(tls *libc.TLS, pVTab uintptr, argc int32, argv uintptr, pRowid uintptr) int32 {
+	vw := (*vtabWrapper)(unsafe.Pointer(pVTab))
+	xvtables.mu.RLock()
+	vtab := xvtables.m[vw.id]
+	xvtables.mu.RUnlock()
+
+	if vtab.Write == nil {
+		vw.setErrorMessage(tls, fmt.Sprintf("%T does not implement WritableVTable", vtab.VTable))
+		return lib.SQLITE_READONLY
+	}
+
+	if argc < 1 {
+		panic("SQLite did not give enough arguments to xUpdate")
+	}
+	oldRowID := Value{
+		tls:       tls,
+		ptrOrType: *(*uintptr)(unsafe.Pointer(argv)),
+	}
+	if argc == 1 {
+		if err := vtab.Write.DeleteRow(oldRowID); err != nil {
+			vw.setErrorMessage(tls, err.Error())
+			return int32(ErrCode(err))
+		}
+		return lib.SQLITE_OK
+	}
+
+	goArgs := VTableUpdateParams{
+		OldRowID: oldRowID,
+	}
+	argv += unsafe.Sizeof(uintptr(0))
+	goArgs.NewRowID = Value{
+		tls:       tls,
+		ptrOrType: *(*uintptr)(unsafe.Pointer(argv)),
+	}
+	if argc > 2 {
+		goArgs.Columns = make([]Value, argc-2)
+		argv += unsafe.Sizeof(uintptr(0))
+		for i := range goArgs.Columns {
+			goArgs.Columns[i] = Value{
+				tls:       tls,
+				ptrOrType: *(*uintptr)(unsafe.Pointer(argv)),
+			}
+			argv += unsafe.Sizeof(uintptr(0))
+		}
+	}
+
+	insertRowID, err := vtab.Write.Update(goArgs)
+	if err != nil {
+		vw.setErrorMessage(tls, err.Error())
+		return int32(ErrCode(err))
+	}
+	*(*int64)(unsafe.Pointer(pRowid)) = insertRowID
 	return lib.SQLITE_OK
 }
 
@@ -710,9 +817,9 @@ func vtabRenameTrampoline(tls *libc.TLS, pVTab uintptr, zNew uintptr) int32 {
 		vw.setErrorMessage(tls, fmt.Sprintf("no Rename method for %T", vtab.VTable))
 		return lib.SQLITE_READONLY
 	}
-		if err := vtab.Rename.Rename(libc.GoString(zNew)); err != nil {
-			vw.setErrorMessage(tls, err.Error())
-			return int32(ErrCode(err))
+	if err := vtab.Rename.Rename(libc.GoString(zNew)); err != nil {
+		vw.setErrorMessage(tls, err.Error())
+		return int32(ErrCode(err))
 	}
 	return lib.SQLITE_OK
 }

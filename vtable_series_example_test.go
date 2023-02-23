@@ -263,7 +263,7 @@ func (cur *seriesvtabCursor) Next() error {
 	return nil
 }
 
-func (cur *seriesvtabCursor) Column(i int) (sqlite.Value, error) {
+func (cur *seriesvtabCursor) Column(i int, noChange bool) (sqlite.Value, error) {
 	switch i {
 	case seriesColumnValue:
 		return sqlite.IntegerValue(cur.value), nil
