@@ -167,35 +167,6 @@ type IndexInputs struct {
 	ColumnsUsed uint64
 }
 
-type IndexConstraint struct {
-	Column int
-	Op     IndexConstraintOp
-	Usable bool
-}
-
-type IndexConstraintOp uint8
-
-const (
-	IndexConstraintEq        IndexConstraintOp = lib.SQLITE_INDEX_CONSTRAINT_EQ
-	IndexConstraintGT        IndexConstraintOp = lib.SQLITE_INDEX_CONSTRAINT_GT
-	IndexConstraintLE        IndexConstraintOp = lib.SQLITE_INDEX_CONSTRAINT_LE
-	IndexConstraintLT        IndexConstraintOp = lib.SQLITE_INDEX_CONSTRAINT_LT
-	IndexConstraintGE        IndexConstraintOp = lib.SQLITE_INDEX_CONSTRAINT_GE
-	IndexConstraintMatch     IndexConstraintOp = lib.SQLITE_INDEX_CONSTRAINT_MATCH
-	IndexConstraintLike      IndexConstraintOp = lib.SQLITE_INDEX_CONSTRAINT_LIKE
-	IndexConstraintGlob      IndexConstraintOp = lib.SQLITE_INDEX_CONSTRAINT_GLOB
-	IndexConstraintRegexp    IndexConstraintOp = lib.SQLITE_INDEX_CONSTRAINT_REGEXP
-	IndexConstraintNE        IndexConstraintOp = lib.SQLITE_INDEX_CONSTRAINT_NE
-	IndexConstraintIsNot     IndexConstraintOp = lib.SQLITE_INDEX_CONSTRAINT_ISNOT
-	IndexConstraintIsNotNull IndexConstraintOp = lib.SQLITE_INDEX_CONSTRAINT_ISNOTNULL
-	IndexConstraintIsNull    IndexConstraintOp = lib.SQLITE_INDEX_CONSTRAINT_ISNULL
-	IndexConstraintIs        IndexConstraintOp = lib.SQLITE_INDEX_CONSTRAINT_IS
-	IndexConstraintLimit     IndexConstraintOp = lib.SQLITE_INDEX_CONSTRAINT_LIMIT
-	IndexConstraintOffset    IndexConstraintOp = lib.SQLITE_INDEX_CONSTRAINT_OFFSET
-
-	IndexConstraintFunction IndexConstraintOp = lib.SQLITE_INDEX_CONSTRAINT_FUNCTION
-)
-
 type IndexOrderBy struct {
 	Column int
 	Desc   bool
