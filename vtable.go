@@ -379,7 +379,7 @@ func vtabConnectTrampoline(tls *libc.TLS, db uintptr, pAux uintptr, argc int32, 
 	return callConnectFunc(tls, module.Connect, db, argc, argv, ppVTab, pzErr)
 }
 
-func callConnectFunc(tls *libc.TLS, connect VTableConnectFunc, db uintptr, argc int32, argv uintptr, ppVTab uintptr, pzErr uintptr) int32 {
+func callConnectFunc(tls *libc.TLS, connect VTableConnectFunc, db uintptr, argc int32, argv uintptr, ppVTab uintptr, pzErr uintptr) (retcode int32) {
 	allConns.mu.RLock()
 	c := allConns.table[db]
 	allConns.mu.RUnlock()
@@ -414,24 +414,34 @@ func callConnectFunc(tls *libc.TLS, connect VTableConnectFunc, db uintptr, argc 
 		*(*uintptr)(unsafe.Pointer(pzErr)) = zerr
 		return int32(ErrCode(err))
 	}
+	defer func() {
+		if retcode != lib.SQLITE_OK {
+			vtab.Disconnect()
+		}
+	}()
+
+	// Call vtab configuration functions based on result.
 	cdecl, err := libc.CString(cfg.Declaration)
 	if err != nil {
-		vtab.Disconnect()
 		return lib.SQLITE_NOMEM
 	}
 	defer libc.Xfree(tls, cdecl)
-	res := ResultCode(lib.Xsqlite3_declare_vtab(tls, db, cdecl))
-	if !res.IsSuccess() {
-		vtab.Disconnect()
+	if res := ResultCode(lib.Xsqlite3_declare_vtab(tls, db, cdecl)); !res.IsSuccess() {
 		return int32(res)
 	}
-	// TODO(now): other cfg options
+	if !cfg.AllowIndirect {
+		lib.Xsqlite3_vtab_config(tls, db, lib.SQLITE_VTAB_DIRECTONLY, 0)
+	}
+	if cfg.ConstraintSupport {
+		vargs := libc.NewVaList(int32(1))
+		lib.Xsqlite3_vtab_config(tls, db, lib.SQLITE_VTAB_DIRECTONLY, vargs)
+		libc.Xfree(tls, vargs)
+	}
 
 	vtabWrapperSize := int32(unsafe.Sizeof(vtabWrapper{}))
 	pvtab := lib.Xsqlite3_malloc(tls, vtabWrapperSize)
 	*(*uintptr)(unsafe.Pointer(ppVTab)) = pvtab
 	if pvtab == 0 {
-		vtab.Disconnect()
 		return lib.SQLITE_NOMEM
 	}
 	libc.Xmemset(tls, pvtab, 0, types.Size_t(vtabWrapperSize))
