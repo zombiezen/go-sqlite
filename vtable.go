@@ -91,6 +91,11 @@ type VTableConfig struct {
 //
 // [virtual table]: https://sqlite.org/vtab.html
 type VTable interface {
+	// BestIndex informs SQLite the best way to access the virtual table.
+	// While compiling a single SQL query,
+	// the SQLite core might call BestIndex multiple times with different inputs.
+	// The SQLite core will then select the combination
+	// that appears to give the best performance.
 	BestIndex(*IndexInputs) (*IndexOutputs, error)
 	Open() (VTableCursor, error)
 	Disconnect() error
@@ -153,11 +158,13 @@ type SavepointVTable interface {
 	RollbackTo(n int) error
 }
 
+// A RenameVTable is a [VTable] that supports its non-eponymous form being renamed.
 type RenameVTable interface {
 	VTable
 	Rename(new string) error
 }
 
+// IndexInputs is the set of arguments that the SQLite core passes to [VTable.BestIndex].
 type IndexInputs struct {
 	// Constraints corresponds to the WHERE clause.
 	Constraints []IndexConstraint
@@ -167,11 +174,60 @@ type IndexInputs struct {
 	ColumnsUsed uint64
 }
 
-type IndexOrderBy struct {
-	Column int
-	Desc   bool
+func newIndexInputs(tls *libc.TLS, infoPtr uintptr) *IndexInputs {
+	info := (*lib.Sqlite3_index_info)(unsafe.Pointer(infoPtr))
+	inputs := &IndexInputs{
+		ColumnsUsed: info.FcolUsed,
+		Constraints: make([]IndexConstraint, info.FnConstraint),
+		OrderBy:     make([]IndexOrderBy, info.FnOrderBy),
+	}
+	aConstraint := info.FaConstraint
+	ppVal := lib.Xsqlite3_malloc(tls, int32(unsafe.Sizeof(uintptr(0))))
+	if ppVal != 0 {
+		defer lib.Xsqlite3_free(tls, ppVal)
+	}
+	for i := range inputs.Constraints {
+		c := (*lib.Sqlite3_index_constraint)(unsafe.Pointer(aConstraint))
+		inputs.Constraints[i] = IndexConstraint{
+			Column:    int(c.FiColumn),
+			Op:        IndexConstraintOp(c.Fop),
+			Usable:    c.Fusable != 0,
+			Collation: libc.GoString(lib.Xsqlite3_vtab_collation(tls, infoPtr, int32(i))),
+		}
+		if ppVal != 0 {
+			res := ResultCode(lib.Xsqlite3_vtab_rhs_value(tls, infoPtr, int32(i), ppVal))
+			if res != ResultOK {
+				inputs.Constraints[i].RValue = Value{
+					tls:       tls,
+					ptrOrType: *(*uintptr)(unsafe.Pointer(ppVal)),
+				}
+				inputs.Constraints[i].RValueKnown = true
+			}
+		}
+		aConstraint += unsafe.Sizeof(lib.Sqlite3_index_constraint{})
+	}
+	aOrderBy := info.FaOrderBy
+	for i := range inputs.OrderBy {
+		o := (*lib.Sqlite3_index_orderby)(unsafe.Pointer(aOrderBy))
+		inputs.OrderBy[i] = IndexOrderBy{
+			Column: int(o.FiColumn),
+			Desc:   o.Fdesc != 0,
+		}
+		aOrderBy += unsafe.Sizeof(lib.Sqlite3_index_orderby{})
+	}
+	return inputs
 }
 
+// IndexOrderBy is a term in the ORDER BY clause.
+type IndexOrderBy struct {
+	// Column is column index.
+	// Column indices start at 0.
+	Column int
+	// Desc is true if descending or false if ascending.
+	Desc bool
+}
+
+// IndexOutputs is the information that [VTable.BestIndex] returns to the SQLite core.
 type IndexOutputs struct {
 	// ConstraintUsage is a mapping from [IndexInputs.Constraints]
 	// to [VTableCursor.Filter] arguments.
@@ -201,6 +257,48 @@ type IndexOutputs struct {
 	UseZeroEstimates bool
 	// IndexFlags is a bitmask of other flags about the index.
 	IndexFlags IndexFlags
+}
+
+func (outputs *IndexOutputs) copyToC(tls *libc.TLS, infoPtr uintptr) error {
+	info := (*lib.Sqlite3_index_info)(unsafe.Pointer(infoPtr))
+
+	aConstraintUsage := info.FaConstraintUsage
+	for _, u := range outputs.ConstraintUsage {
+		ptr := (*lib.Sqlite3_index_constraint_usage)(unsafe.Pointer(aConstraintUsage))
+		ptr.FargvIndex = int32(u.ArgvIndex)
+		if u.Omit {
+			ptr.Fomit = 1
+		} else {
+			ptr.Fomit = 0
+		}
+		aConstraintUsage += unsafe.Sizeof(lib.Sqlite3_index_constraint_usage{})
+	}
+	info.FidxNum = outputs.ID.Num
+	if len(outputs.ID.String) == 0 {
+		info.FidxStr = 0
+		info.FneedToFreeIdxStr = 0
+	} else {
+		var err error
+		info.FidxStr, err = sqliteCString(tls, outputs.ID.String)
+		if err != nil {
+			return err
+		}
+		info.FneedToFreeIdxStr = 1
+	}
+	if outputs.OrderByConsumed {
+		info.ForderByConsumed = 1
+	} else {
+		info.ForderByConsumed = 0
+	}
+	if outputs.EstimatedCost > 0 || outputs.UseZeroEstimates {
+		info.FestimatedCost = outputs.EstimatedCost
+	}
+	if outputs.EstimatedRows > 0 || outputs.UseZeroEstimates {
+		info.FestimatedRows = outputs.EstimatedRows
+	}
+	info.FidxFlags = int32(outputs.IndexFlags)
+
+	return nil
 }
 
 // IndexConstraintUsage maps a single constraint from [IndexInputs.Constraints]
@@ -460,33 +558,7 @@ func vtabBestIndexTrampoline(tls *libc.TLS, pVTab uintptr, infoPtr uintptr) int3
 	vtab := xvtables.m[vw.id]
 	xvtables.mu.RUnlock()
 
-	// Convert inputs from C to Go.
-	inputs := &IndexInputs{
-		ColumnsUsed: info.FcolUsed,
-		Constraints: make([]IndexConstraint, info.FnConstraint),
-		OrderBy:     make([]IndexOrderBy, info.FnOrderBy),
-	}
-	aConstraint := info.FaConstraint
-	for i := range inputs.Constraints {
-		c := (*lib.Sqlite3_index_constraint)(unsafe.Pointer(aConstraint))
-		inputs.Constraints[i] = IndexConstraint{
-			Column: int(c.FiColumn),
-			Op:     IndexConstraintOp(c.Fop),
-			Usable: c.Fusable != 0,
-		}
-		aConstraint += unsafe.Sizeof(lib.Sqlite3_index_constraint{})
-	}
-	aOrderBy := info.FaOrderBy
-	for i := range inputs.OrderBy {
-		o := (*lib.Sqlite3_index_orderby)(unsafe.Pointer(aOrderBy))
-		inputs.OrderBy[i] = IndexOrderBy{
-			Column: int(o.FiColumn),
-			Desc:   o.Fdesc != 0,
-		}
-		aOrderBy += unsafe.Sizeof(lib.Sqlite3_index_orderby{})
-	}
-
-	outputs, err := vtab.BestIndex(inputs)
+	outputs, err := vtab.BestIndex(newIndexInputs(tls, infoPtr))
 	if err != nil {
 		vw.setErrorMessage(tls, err.Error())
 		return int32(ErrCode(err))
@@ -497,43 +569,10 @@ func vtabBestIndexTrampoline(tls *libc.TLS, pVTab uintptr, infoPtr uintptr) int3
 		return int32(ResultMisuse)
 	}
 
-	// Convert outputs from Go to C.
-	aConstraintUsage := info.FaConstraintUsage
-	for _, u := range outputs.ConstraintUsage {
-		ptr := (*lib.Sqlite3_index_constraint_usage)(unsafe.Pointer(aConstraintUsage))
-		ptr.FargvIndex = int32(u.ArgvIndex)
-		if u.Omit {
-			ptr.Fomit = 1
-		} else {
-			ptr.Fomit = 0
-		}
-		aConstraintUsage += unsafe.Sizeof(lib.Sqlite3_index_constraint_usage{})
+	if err := outputs.copyToC(tls, infoPtr); err != nil {
+		vw.setErrorMessage(tls, err.Error())
+		return int32(ErrCode(err))
 	}
-	info.FidxNum = outputs.ID.Num
-	if len(outputs.ID.String) == 0 {
-		info.FidxStr = 0
-		info.FneedToFreeIdxStr = 0
-	} else {
-		var err error
-		info.FidxStr, err = sqliteCString(tls, outputs.ID.String)
-		if err != nil {
-			vw.setErrorMessage(tls, err.Error())
-			return int32(ErrCode(err))
-		}
-		info.FneedToFreeIdxStr = 1
-	}
-	if outputs.OrderByConsumed {
-		info.ForderByConsumed = 1
-	} else {
-		info.ForderByConsumed = 0
-	}
-	if outputs.EstimatedCost > 0 || outputs.UseZeroEstimates {
-		info.FestimatedCost = outputs.EstimatedCost
-	}
-	if outputs.EstimatedRows > 0 || outputs.UseZeroEstimates {
-		info.FestimatedRows = outputs.EstimatedRows
-	}
-	info.FidxFlags = int32(outputs.IndexFlags)
 
 	return lib.SQLITE_OK
 }

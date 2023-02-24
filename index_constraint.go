@@ -13,6 +13,7 @@ import (
 // of a query that uses a virtual table.
 type IndexConstraint struct {
 	// Column is the left-hand operand.
+	// Column indices start at 0.
 	// -1 indicates the left-hand operand is the rowid.
 	// Column should be ignored when Op is [IndexConstraintLimit] or [IndexConstraintOffset].
 	Column int
@@ -21,7 +22,11 @@ type IndexConstraint struct {
 	// Usable indicates whether [VTable.BestIndex] should consider the constraint.
 	// Usable may false depending on how tables are ordered in a join.
 	Usable bool
+	// Collation is the name of the collating sequence
+	// that should be used when evaluating the constraint.
+	Collation string
 	// RValue is the right-hand operand, if known during statement preparation.
+	// It's only valid until the end of [VTable.BestIndex].
 	RValue Value
 	// RValueKnown indicates whether RValue is set.
 	RValueKnown bool
