@@ -5,7 +5,9 @@ package sqlite
 
 import (
 	"fmt"
+	"unsafe"
 
+	"modernc.org/libc"
 	lib "modernc.org/sqlite/lib"
 )
 
@@ -30,6 +32,36 @@ type IndexConstraint struct {
 	RValue Value
 	// RValueKnown indicates whether RValue is set.
 	RValueKnown bool
+}
+
+func (c *IndexConstraint) copyFromC(tls *libc.TLS, infoPtr uintptr, i int32, ppVal uintptr) {
+	info := (*lib.Sqlite3_index_info)(unsafe.Pointer(infoPtr))
+	src := (*lib.Sqlite3_index_constraint)(unsafe.Pointer(info.FaConstraint + uintptr(i)*unsafe.Sizeof(lib.Sqlite3_index_constraint{})))
+	*c = IndexConstraint{
+		Column: int(src.FiColumn),
+		Op:     IndexConstraintOp(src.Fop),
+		Usable: src.Fusable != 0,
+	}
+
+	const binaryCollation = "BINARY"
+	cCollation := lib.Xsqlite3_vtab_collation(tls, infoPtr, int32(i))
+	if isCStringEqual(cCollation, binaryCollation) {
+		// BINARY is the most common, so avoid allocations in this case.
+		c.Collation = binaryCollation
+	} else {
+		c.Collation = libc.GoString(cCollation)
+	}
+
+	if ppVal != 0 {
+		res := ResultCode(lib.Xsqlite3_vtab_rhs_value(tls, infoPtr, int32(i), ppVal))
+		if res == ResultOK {
+			c.RValue = Value{
+				tls:       tls,
+				ptrOrType: *(*uintptr)(unsafe.Pointer(ppVal)),
+			}
+			c.RValueKnown = true
+		}
+	}
 }
 
 // IndexConstraintOp is an enumeration of virtual table constraint operators
@@ -97,5 +129,22 @@ func (op IndexConstraintOp) String() string {
 			return fmt.Sprintf("IndexConstraintOp(%d)", uint8(op))
 		}
 		return fmt.Sprintf("<function %d>", uint8(op))
+	}
+}
+
+func isCStringEqual(c uintptr, s string) bool {
+	if c == 0 {
+		return s == ""
+	}
+	for {
+		cc := *(*byte)(unsafe.Pointer(c))
+		if cc == 0 {
+			return len(s) == 0
+		}
+		if len(s) == 0 || cc != s[0] {
+			return false
+		}
+		c++
+		s = s[1:]
 	}
 }

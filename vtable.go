@@ -177,34 +177,16 @@ type IndexInputs struct {
 func newIndexInputs(tls *libc.TLS, infoPtr uintptr) *IndexInputs {
 	info := (*lib.Sqlite3_index_info)(unsafe.Pointer(infoPtr))
 	inputs := &IndexInputs{
-		ColumnsUsed: info.FcolUsed,
 		Constraints: make([]IndexConstraint, info.FnConstraint),
 		OrderBy:     make([]IndexOrderBy, info.FnOrderBy),
+		ColumnsUsed: info.FcolUsed,
 	}
-	aConstraint := info.FaConstraint
 	ppVal := lib.Xsqlite3_malloc(tls, int32(unsafe.Sizeof(uintptr(0))))
 	if ppVal != 0 {
 		defer lib.Xsqlite3_free(tls, ppVal)
 	}
 	for i := range inputs.Constraints {
-		c := (*lib.Sqlite3_index_constraint)(unsafe.Pointer(aConstraint))
-		inputs.Constraints[i] = IndexConstraint{
-			Column:    int(c.FiColumn),
-			Op:        IndexConstraintOp(c.Fop),
-			Usable:    c.Fusable != 0,
-			Collation: libc.GoString(lib.Xsqlite3_vtab_collation(tls, infoPtr, int32(i))),
-		}
-		if ppVal != 0 {
-			res := ResultCode(lib.Xsqlite3_vtab_rhs_value(tls, infoPtr, int32(i), ppVal))
-			if res != ResultOK {
-				inputs.Constraints[i].RValue = Value{
-					tls:       tls,
-					ptrOrType: *(*uintptr)(unsafe.Pointer(ppVal)),
-				}
-				inputs.Constraints[i].RValueKnown = true
-			}
-		}
-		aConstraint += unsafe.Sizeof(lib.Sqlite3_index_constraint{})
+		inputs.Constraints[i].copyFromC(tls, infoPtr, int32(i), ppVal)
 	}
 	aOrderBy := info.FaOrderBy
 	for i := range inputs.OrderBy {
@@ -315,7 +297,7 @@ type IndexConstraintUsage struct {
 	// If Omit is true, then it is a hint to SQLite
 	// that the virtual table will guarantee that the constraint will always be satisfied.
 	// SQLite will always double-check that rows satisfy the constraint if Omit is false,
-	// but may skip this check if Omit is false.
+	// but may skip this check if Omit is true.
 	Omit bool
 }
 
