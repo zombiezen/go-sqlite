@@ -19,8 +19,7 @@ func Example() {
 	}
 	defer conn.Close()
 
-	err = conn.SetModule("generate_series", generateseries.Module)
-	if err != nil {
+	if err := generateseries.Register(conn); err != nil {
 		log.Fatal(err)
 	}
 	err = sqlitex.ExecuteTransient(

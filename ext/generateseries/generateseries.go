@@ -18,6 +18,11 @@ var Module = &sqlite.Module{
 	Connect: connect,
 }
 
+// Register registers the "generate_series" table-valued function on the given connection.
+func Register(c *sqlite.Conn) error {
+	return c.SetModule("generate_series", Module)
+}
+
 type vtab struct{}
 
 const (
