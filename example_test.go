@@ -85,6 +85,10 @@ func ExampleConn_SetInterrupt() {
 	conn.SetInterrupt(ctx.Done())
 }
 
+// This example shows how to register a basic scalar function.
+//
+// If you're looking to use regular expressions in your application,
+// use [zombiezen.com/go/sqlite/ext/refunc.Register].
 func ExampleConn_CreateFunction() {
 	conn, err := sqlite.OpenConn(":memory:")
 	if err != nil {
@@ -131,6 +135,8 @@ func ExampleConn_CreateFunction() {
 
 // This example shows the same regexp function as in the CreateFunction example,
 // but it uses auxiliary data to avoid recompiling the regular expression.
+//
+// This is the implementation used in [zombiezen.com/go/sqlite/ext/refunc].
 func ExampleContext_AuxData() {
 	conn, err := sqlite.OpenConn(":memory:")
 	if err != nil {

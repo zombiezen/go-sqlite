@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Support user-defined collating sequences
   ([#21](https://github.com/zombiezen/go-sqlite/issues/21)).
+- Exported the `regexp` function example as a new `ext/refunc` package.
 
 ### Changed
 
