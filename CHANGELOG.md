@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Support user-defined collating sequences
   ([#21](https://github.com/zombiezen/go-sqlite/issues/21)).
+- Support user-defined virtual tables
+  ([#15](https://github.com/zombiezen/go-sqlite/issues/15)).
+- New package `ext/generateseries` provides
+  an optional `generate_series` table-valued function extension.
 
 ### Changed
 
