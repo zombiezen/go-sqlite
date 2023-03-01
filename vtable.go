@@ -97,8 +97,13 @@ type VTable interface {
 	// The SQLite core will then select the combination
 	// that appears to give the best performance.
 	BestIndex(*IndexInputs) (*IndexOutputs, error)
+	// Open creates a new cursor.
 	Open() (VTableCursor, error)
+	// Disconnect releases any resources associated with the virtual table.
 	Disconnect() error
+	// Destroy is called when the table is "DROP"ed
+	// to tear down any persistent data structures
+	// and release any resources associated with the virtual table.
 	Destroy() error
 }
 
@@ -313,6 +318,8 @@ type IndexID struct {
 type IndexFlags uint32
 
 const (
+	// IndexScanUnique indicates that the virtual table
+	// will only return zero or one rows given the input constraints.
 	IndexScanUnique IndexFlags = lib.SQLITE_INDEX_SCAN_UNIQUE
 )
 
