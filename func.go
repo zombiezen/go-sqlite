@@ -173,15 +173,16 @@ func (ctx Context) resultError(err error) {
 	lib.Xsqlite3_result_error_code(ctx.tls, ctx.ptr, int32(ErrCode(err)))
 }
 
-// Value represents a value that can be stored in a database table. The zero
-// value is NULL. The accessor methods on Value may perform automatic
-// conversions and thus methods on Value must not be called concurrently.
+// Value represents a value that can be stored in a database table.
+// The zero value is NULL.
+// The accessor methods on Value may perform automatic conversions
+// and thus methods on Value must not be called concurrently.
 type Value struct {
 	tls       *libc.TLS
 	ptrOrType uintptr // pointer to sqlite_value if tls != nil, ColumnType otherwise
 
 	s string
-	n int64
+	n int64 // if ptrOrType == 0 and n != 0, then indicates the "nochange" NULL.
 }
 
 // IntegerValue returns a new Value representing the given integer.
@@ -203,6 +204,12 @@ func TextValue(s string) Value {
 // byte slice.
 func BlobValue(b []byte) Value {
 	return Value{ptrOrType: uintptr(TypeBlob), s: string(b)}
+}
+
+// Unchanged returns a NULL Value for which [Value.NoChange] reports true.
+// This is only significant as the return value for [VTableCursor.Column].
+func Unchanged() Value {
+	return Value{n: 1}
 }
 
 // Type returns the data type of the value. The result of Type is undefined if
@@ -355,6 +362,22 @@ func (v Value) Blob() []byte {
 	}
 	ptr := lib.Xsqlite3_value_blob(v.tls, v.ptrOrType)
 	return libc.GoBytes(ptr, int(lib.Xsqlite3_value_bytes(v.tls, v.ptrOrType)))
+}
+
+// NoChange reports whether a column
+// corresponding to this value in a [VTable.Update] method
+// is unchanged by the UPDATE operation
+// that the VTable.Update method call was invoked to implement
+// and if the prior [VTableCursor.Column] method call that was invoked
+// to extract the value for that column returned [Unchanged].
+func (v Value) NoChange() bool {
+	if v.ptrOrType == 0 {
+		return v.n != 0
+	}
+	if v.tls == nil {
+		return false
+	}
+	return lib.Xsqlite3_value_nochange(v.tls, v.ptrOrType) != 0
 }
 
 // FunctionImpl describes an [application-defined SQL function].
