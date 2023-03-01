@@ -1,55 +1,24 @@
 // Copyright 2023 Ross Light
 // SPDX-License-Identifier: ISC
 
-package sqlite_test
+// Package generateseries provides a port of the [generate_series] table-valued function
+// from the SQLite tree.
+//
+// [generate_series]: https://sqlite.org/src/file/ext/misc/series.c
+package generateseries
 
 import (
 	"fmt"
-	"log"
 
 	"zombiezen.com/go/sqlite"
-	"zombiezen.com/go/sqlite/sqlitex"
 )
 
-// This is a port of the [generate_series] table-valued function in the SQLite tree.
-//
-// [generate_series]: https://sqlite.org/src/file/ext/misc/series.c
-func ExampleVTable_series() {
-	conn, err := sqlite.OpenConn(":memory:")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer conn.Close()
-
-	err = conn.SetModule("generate_series", &sqlite.Module{
-		Connect: seriesvtabConnect,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	err = sqlitex.ExecuteTransient(
-		conn,
-		`SELECT * FROM generate_series(0, 20, 5);`,
-		&sqlitex.ExecOptions{
-			ResultFunc: func(stmt *sqlite.Stmt) error {
-				fmt.Printf("%2d\n", stmt.ColumnInt(0))
-				return nil
-			},
-		},
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// Output:
-	//  0
-	//  5
-	// 10
-	// 15
-	// 20
+// Module is a virtual table module that can be registered with [sqlite.Conn.SetModule].
+var Module = &sqlite.Module{
+	Connect: connect,
 }
 
-type seriesvtab struct{}
+type vtab struct{}
 
 const (
 	seriesColumnValue = iota
@@ -58,8 +27,8 @@ const (
 	seriesColumnStep
 )
 
-func seriesvtabConnect(c *sqlite.Conn, opts *sqlite.VTableConnectOptions) (sqlite.VTable, *sqlite.VTableConfig, error) {
-	vtab := new(seriesvtab)
+func connect(c *sqlite.Conn, opts *sqlite.VTableConnectOptions) (sqlite.VTable, *sqlite.VTableConfig, error) {
+	vtab := new(vtab)
 	cfg := &sqlite.VTableConfig{
 		Declaration:   "CREATE TABLE x(value,start hidden,stop hidden,step hidden)",
 		AllowIndirect: true,
@@ -90,7 +59,7 @@ func seriesvtabConnect(c *sqlite.Conn, opts *sqlite.VTableConnectOptions) (sqlit
 //	(2)  stop = $value   -- constraint exists
 //	(4)  step = $value   -- constraint exists
 //	(8)  output in descending order
-func (vt *seriesvtab) BestIndex(inputs *sqlite.IndexInputs) (*sqlite.IndexOutputs, error) {
+func (vt *vtab) BestIndex(inputs *sqlite.IndexInputs) (*sqlite.IndexOutputs, error) {
 	var idxNum int32
 	startSeen := false
 	var unusableMask uint
@@ -161,19 +130,19 @@ func (vt *seriesvtab) BestIndex(inputs *sqlite.IndexInputs) (*sqlite.IndexOutput
 	return outputs, nil
 }
 
-func (vt *seriesvtab) Open() (sqlite.VTableCursor, error) {
-	return new(seriesvtabCursor), nil
+func (vt *vtab) Open() (sqlite.VTableCursor, error) {
+	return new(cursor), nil
 }
 
-func (vt *seriesvtab) Disconnect() error {
+func (vt *vtab) Disconnect() error {
 	return nil
 }
 
-func (vt *seriesvtab) Destroy() error {
+func (vt *vtab) Destroy() error {
 	return nil
 }
 
-type seriesvtabCursor struct {
+type cursor struct {
 	isDesc  bool
 	rowid   int64
 	value   int64
@@ -202,7 +171,7 @@ type seriesvtabCursor struct {
 // so that it is pointing at the first row,
 // or pointing off the end of the table (so that EOF will return true)
 // if the table is empty.
-func (cur *seriesvtabCursor) Filter(id sqlite.IndexID, argv []sqlite.Value) error {
+func (cur *cursor) Filter(id sqlite.IndexID, argv []sqlite.Value) error {
 	i := 0
 	if id.Num&1 != 0 {
 		cur.mnValue = argv[i].Int64()
@@ -253,7 +222,7 @@ func (cur *seriesvtabCursor) Filter(id sqlite.IndexID, argv []sqlite.Value) erro
 	return nil
 }
 
-func (cur *seriesvtabCursor) Next() error {
+func (cur *cursor) Next() error {
 	if cur.isDesc {
 		cur.value -= cur.step
 	} else {
@@ -263,7 +232,7 @@ func (cur *seriesvtabCursor) Next() error {
 	return nil
 }
 
-func (cur *seriesvtabCursor) Column(i int, noChange bool) (sqlite.Value, error) {
+func (cur *cursor) Column(i int, noChange bool) (sqlite.Value, error) {
 	switch i {
 	case seriesColumnValue:
 		return sqlite.IntegerValue(cur.value), nil
@@ -278,11 +247,11 @@ func (cur *seriesvtabCursor) Column(i int, noChange bool) (sqlite.Value, error) 
 	}
 }
 
-func (cur *seriesvtabCursor) RowID() (int64, error) {
+func (cur *cursor) RowID() (int64, error) {
 	return cur.rowid, nil
 }
 
-func (cur *seriesvtabCursor) EOF() bool {
+func (cur *cursor) EOF() bool {
 	if cur.isDesc {
 		return cur.value < cur.mnValue
 	} else {
@@ -290,6 +259,6 @@ func (cur *seriesvtabCursor) EOF() bool {
 	}
 }
 
-func (cur *seriesvtabCursor) Close() error {
+func (cur *cursor) Close() error {
 	return nil
 }
