@@ -5,9 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-[Unreleased]: https://github.com/zombiezen/go-sqlite/compare/v0.12.0...main
+[Unreleased]: https://github.com/zombiezen/go-sqlite/compare/v0.13.0...main
 
-## [Unreleased][]
+## [0.13.0][] - 2023-03-28
+
+Version 0.13 added support for
+user-defined [collating sequences](https://www.sqlite.org/datatype3.html#collation)
+and user-defined [virtual tables](https://sqlite.org/vtab.html).
+
+[0.13.0]: https://github.com/zombiezen/go-sqlite/releases/tag/v0.13.0
 
 ### Added
 
