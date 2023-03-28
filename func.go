@@ -438,9 +438,7 @@ type AggregateFunction interface {
 	// The argument Values are not valid past the return of the function.
 	WindowInverse(ctx Context, rowArgs []Value) error
 
-	// WindowValue is called to get the current value of an aggregate window function.
-	// This function will not be called when using an aggregate window function
-	// as an ordinary aggregate function.
+	// WindowValue is called to get the current value of an aggregate function.
 	WindowValue(ctx Context) (Value, error)
 
 	// Finalize is called after all of the aggregate function's input rows

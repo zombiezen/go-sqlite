@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The minimum supported Go version for this library is now Go 1.19.
 
+### Fixed
+
+- The documentation for `AggregateFunction.WindowValue`
+  incorrectly stated that it would not be called in non-window contexts.
+  The sentence has been removed, but the behavior has not changed.
+
 ## [0.12.0][] - 2023-02-08
 
 Version 0.12 added support for the [online backup API](https://www.sqlite.org/backup.html).
