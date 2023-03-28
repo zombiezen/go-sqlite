@@ -554,7 +554,6 @@ func (c *Conn) LastInsertRowID() int64 {
 }
 
 // Serialize serializes the database with the given name (e.g. "main" or "temp").
-// Serialize may return a nil slice if there was an error during serialization.
 func (c *Conn) Serialize(dbName string) ([]byte, error) {
 	if c == nil {
 		return nil, fmt.Errorf("sqlite: serialize %q: nil connection", dbName)
