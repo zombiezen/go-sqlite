@@ -553,6 +553,68 @@ func (c *Conn) LastInsertRowID() int64 {
 	return lib.Xsqlite3_last_insert_rowid(c.tls, c.conn)
 }
 
+// Serialize serializes the database with the given name (e.g. "main" or "temp").
+// Serialize may return a nil slice if there was an error during serialization.
+func (c *Conn) Serialize(dbName string) ([]byte, error) {
+	if c == nil {
+		return nil, fmt.Errorf("sqlite: serialize %q: nil connection", dbName)
+	}
+	zSchema, cleanup, err := cDBName(dbName)
+	if err != nil {
+		return nil, fmt.Errorf("sqlite: serialize %q: %v", dbName, err)
+	}
+	defer cleanup()
+	piSize := lib.Xsqlite3_malloc(c.tls, int32(unsafe.Sizeof(int64(0))))
+	if piSize == 0 {
+		return nil, fmt.Errorf("sqlite: serialize %q: memory allocation failure", dbName)
+	}
+	defer lib.Xsqlite3_free(c.tls, piSize)
+
+	// Optimization: avoid copying if possible.
+	p := lib.Xsqlite3_serialize(c.tls, c.conn, zSchema, piSize, lib.SQLITE_SERIALIZE_NOCOPY)
+	if p == 0 {
+		// Optimization impossible. Have SQLite allocate memory.
+		p = lib.Xsqlite3_serialize(c.tls, c.conn, zSchema, piSize, 0)
+		if p == 0 {
+			return nil, fmt.Errorf("sqlite: serialize %q: unable to serialize", dbName)
+		}
+		defer lib.Xsqlite3_free(c.tls, p)
+	}
+
+	// Copy data into a Go byte slice.
+	n := *(*int64)(unsafe.Pointer(piSize))
+	goCopy := make([]byte, n)
+	copy(goCopy, libc.GoBytes(p, int(n)))
+	return goCopy, nil
+}
+
+// Deserialize disconnects the database with the given name (e.g. "main")
+// and reopens it as an in-memory database based on the serialized data.
+// The database name must already exist.
+// It is not possible to deserialize into the TEMP database.
+func (c *Conn) Deserialize(dbName string, data []byte) error {
+	if c == nil {
+		return fmt.Errorf("sqlite: deserialize to %q: nil connection", dbName)
+	}
+	zSchema, cleanup, err := cDBName(dbName)
+	if err != nil {
+		return fmt.Errorf("sqlite: deserialize to %q: %v", dbName, err)
+	}
+	defer cleanup()
+
+	n := int64(len(data))
+	pData := lib.Xsqlite3_malloc64(c.tls, uint64(n))
+	if pData == 0 {
+		return fmt.Errorf("sqlite: deserialize to %q: memory allocation failure", dbName)
+	}
+	copy(libc.GoBytes(pData, len(data)), data)
+	res := ResultCode(lib.Xsqlite3_deserialize(c.tls, c.conn, zSchema, pData, n, n, lib.SQLITE_DESERIALIZE_FREEONCLOSE|lib.SQLITE_DESERIALIZE_RESIZEABLE))
+	if !res.IsSuccess() {
+		return fmt.Errorf("sqlite: deserialize to %q: %w", dbName, res.ToError())
+	}
+	return nil
+}
+
 // extreserr asks SQLite for a string explaining the error.
 // Only called for errors that are probably program bugs.
 func (c *Conn) extreserr(res ResultCode) error {

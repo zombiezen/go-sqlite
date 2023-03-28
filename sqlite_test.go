@@ -899,6 +899,55 @@ func TestSetDefensive(t *testing.T) {
 	}
 }
 
+func TestSerialize(t *testing.T) {
+	c, err := sqlite.OpenConn(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := c.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	err = sqlitex.ExecTransient(c, `CREATE TABLE foo (msg TEXT NOT NULL);`, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = sqlitex.ExecTransient(c, `INSERT INTO foo VALUES ('Hello, World!');`, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := c.Serialize("main")
+	if err != nil {
+		t.Fatal("Serialize:", err)
+	}
+
+	err = sqlitex.ExecTransient(c, `ATTACH DATABASE ':memory:' AS a;`, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Deserialize("a", data); err != nil {
+		t.Error("Deserialize:", err)
+	}
+
+	const want = "Hello, World!"
+	var nResults int
+	err = sqlitex.ExecTransient(c, `SELECT msg FROM a.foo;`, func(stmt *sqlite.Stmt) error {
+		nResults++
+		if got := stmt.ColumnText(0); got != want {
+			t.Errorf("msg = %q; want %q", got, want)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Error(err)
+	}
+	if nResults != 1 {
+		t.Errorf("COUNT(*) = %d; want 1", nResults)
+	}
+}
+
 func TestMain(m *testing.M) {
 	_ = libc.Environ() // Forces libc.SetEnviron; fixes memory accounting balance for environ(7).
 	libc.MemAuditStart()

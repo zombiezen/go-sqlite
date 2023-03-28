@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New package `ext/generateseries` provides
   an optional `generate_series` table-valued function extension.
 - Exported the `regexp` function example as a new `ext/refunc` package.
+- Add `*Conn.Serialize` and `*Conn.Deserialize` methods
+  ([#52](https://github.com/zombiezen/go-sqlite/issues/52)).
 
 ### Changed
 
