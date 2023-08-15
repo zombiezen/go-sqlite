@@ -844,6 +844,79 @@ func TestPool(t *testing.T) {
 			t.Error("Foreign keys were left disabled after migration")
 		}
 	})
+
+	t.Run("NoTouchForeignKeys", func(t *testing.T) {
+		schema := Schema{
+			AppID: 0xedbeef,
+			Migrations: []string{
+				`create table foo ( foreign_keys_enabled bool ); insert into foo values ((select * from pragma_foreign_keys()));`,
+			},
+		}
+		pool := NewPool(filepath.Join(t.TempDir(), "no-touch-foreign-keys.db"), schema, Options{
+			Flags: sqlite.OpenReadWrite | sqlite.OpenCreate,
+			PrepareConn: func(conn *sqlite.Conn) error {
+				return sqlitex.ExecuteTransient(conn, "PRAGMA foreign_keys = on;", nil)
+			},
+		})
+		defer func() {
+			if err := pool.Close(); err != nil {
+				t.Error("pool.Close:", err)
+			}
+		}()
+		conn, err := pool.Get(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer pool.Put(conn)
+		duringMigration, err := sqlitex.ResultBool(conn.Prep("select foreign_keys_enabled from foo;"))
+		if err != nil {
+			t.Error(err)
+		} else if !duringMigration {
+			t.Error("Foreign keys were disabled during migration")
+		}
+		afterMigration, err := sqlitex.ResultBool(conn.Prep("PRAGMA foreign_keys;"))
+		if err != nil {
+			t.Error(err)
+		} else if !afterMigration {
+			t.Error("Foreign keys were disabled after migration")
+		}
+	})
+}
+
+func TestMigrate(t *testing.T) {
+	t.Run("NoTouchForeignKeys", func(t *testing.T) {
+		conn, err := sqlite.OpenConn(filepath.Join(t.TempDir(), "no-touch-foreign-keys.db"), sqlite.OpenReadWrite, sqlite.OpenCreate)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer conn.Close()
+		err = sqlitex.ExecuteTransient(conn, `PRAGMA foreign_keys = on;`, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		schema := Schema{
+			AppID: 0xedbeef,
+			Migrations: []string{
+				`create table foo ( foreign_keys_enabled bool ); insert into foo values ((select * from pragma_foreign_keys()));`,
+			},
+		}
+		if err := Migrate(context.Background(), conn, schema); err != nil {
+			t.Error(err)
+		}
+		duringMigration, err := sqlitex.ResultBool(conn.Prep("select foreign_keys_enabled from foo;"))
+		if err != nil {
+			t.Error(err)
+		} else if !duringMigration {
+			t.Error("Foreign keys were disabled during migration")
+		}
+		afterMigration, err := sqlitex.ResultBool(conn.Prep("PRAGMA foreign_keys;"))
+		if err != nil {
+			t.Error(err)
+		} else if !afterMigration {
+			t.Error("Foreign keys were disabled after migration")
+		}
+	})
 }
 
 // withTestConn makes an independent connection to the given database.

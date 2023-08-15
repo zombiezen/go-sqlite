@@ -287,13 +287,7 @@ func Migrate(ctx context.Context, conn *sqlite.Conn, schema Schema) error {
 func migrateDB(ctx context.Context, conn *sqlite.Conn, schema Schema, onStart SignalFunc) error {
 	defer conn.SetInterrupt(conn.SetInterrupt(ctx.Done()))
 
-	userVersionStmt, _, err := conn.PrepareTransient("PRAGMA user_version;")
-	if err != nil {
-		return fmt.Errorf("migrate database: %w", err)
-	}
-	defer userVersionStmt.Finalize()
-
-	schemaVersion, err := ensureAppID(conn, schema.AppID, userVersionStmt)
+	schemaVersion, err := ensureAppID(conn, schema.AppID)
 	if err != nil {
 		return fmt.Errorf("migrate database: %w", err)
 	}
@@ -303,25 +297,12 @@ func migrateDB(ctx context.Context, conn *sqlite.Conn, schema Schema, onStart Si
 	var foreignKeysEnabled bool
 	err = sqlitex.ExecuteTransient(conn, "PRAGMA foreign_keys;", &sqlitex.ExecOptions{
 		ResultFunc: func(stmt *sqlite.Stmt) error {
-			foreignKeysEnabled = stmt.ColumnInt(0) != 0
+			foreignKeysEnabled = stmt.ColumnBool(0)
 			return nil
 		},
 	})
 	if err != nil {
 		return fmt.Errorf("migrate database: %w", err)
-	}
-	var fkOnStmt, fkOffStmt *sqlite.Stmt
-	if foreignKeysEnabled {
-		fkOnStmt, _, err = conn.PrepareTransient("PRAGMA foreign_keys = on;")
-		if err != nil {
-			return fmt.Errorf("migrate database: %w", err)
-		}
-		defer fkOnStmt.Finalize()
-		fkOffStmt, _, err = conn.PrepareTransient("PRAGMA foreign_keys = off;")
-		if err != nil {
-			return fmt.Errorf("migrate database: %w", err)
-		}
-		defer fkOffStmt.Finalize()
 	}
 
 	beginStmt, _, err := conn.PrepareTransient("BEGIN IMMEDIATE;")
@@ -334,14 +315,15 @@ func migrateDB(ctx context.Context, conn *sqlite.Conn, schema Schema, onStart Si
 		return fmt.Errorf("migrate database: %w", err)
 	}
 	defer commitStmt.Finalize()
-	for ; schemaVersion < len(schema.Migrations); schemaVersion++ {
+	for ; int(schemaVersion) < len(schema.Migrations); schemaVersion++ {
 		migration := schema.Migrations[schemaVersion]
 		disableFKs := foreignKeysEnabled &&
-			schemaVersion < len(schema.MigrationOptions) &&
+			int(schemaVersion) < len(schema.MigrationOptions) &&
 			schema.MigrationOptions[schemaVersion] != nil &&
 			schema.MigrationOptions[schemaVersion].DisableForeignKeys
 		if disableFKs {
-			if err := stepAndReset(fkOffStmt); err != nil {
+			// Do not try to optimize by preparing this PRAGMA statement ahead of time.
+			if err := sqlitex.ExecuteTransient(conn, "PRAGMA foreign_keys = off;", nil); err != nil {
 				return fmt.Errorf("migrate database: disable foreign keys: %w", err)
 			}
 		}
@@ -349,12 +331,8 @@ func migrateDB(ctx context.Context, conn *sqlite.Conn, schema Schema, onStart Si
 		if err := stepAndReset(beginStmt); err != nil {
 			return fmt.Errorf("migrate database: apply migrations[%d]: %w", schemaVersion, err)
 		}
-		if _, err := userVersionStmt.Step(); err != nil {
-			rollback(conn)
-			return fmt.Errorf("migrate database: %w", err)
-		}
-		actualSchemaVersion := userVersionStmt.ColumnInt(0)
-		if err := userVersionStmt.Reset(); err != nil {
+		actualSchemaVersion, err := userVersion(conn)
+		if err != nil {
 			rollback(conn)
 			return fmt.Errorf("migrate database: %w", err)
 		}
@@ -365,12 +343,12 @@ func migrateDB(ctx context.Context, conn *sqlite.Conn, schema Schema, onStart Si
 			continue
 		}
 
-		err := sqlitex.ExecScript(conn, fmt.Sprintf("%s;\nPRAGMA user_version = %d;\n", migration, schemaVersion+1))
+		err = sqlitex.ExecScript(conn, fmt.Sprintf("%s;\nPRAGMA user_version = %d;\n", migration, schemaVersion+1))
 		if err != nil {
 			rollback(conn)
 			return fmt.Errorf("migrate database: apply migrations[%d]: %w", schemaVersion, err)
 		}
-		if schemaVersion == len(schema.Migrations)-1 && schema.RepeatableMigration != "" {
+		if int(schemaVersion) == len(schema.Migrations)-1 && schema.RepeatableMigration != "" {
 			if err := sqlitex.ExecScript(conn, schema.RepeatableMigration); err != nil {
 				rollback(conn)
 				return fmt.Errorf("migrate database: apply repeatable migration: %w", err)
@@ -382,12 +360,26 @@ func migrateDB(ctx context.Context, conn *sqlite.Conn, schema Schema, onStart Si
 			return fmt.Errorf("migrate database: apply migrations[%d]: %w", schemaVersion, err)
 		}
 		if disableFKs {
-			if err := stepAndReset(fkOnStmt); err != nil {
+			if err := sqlitex.ExecuteTransient(conn, "PRAGMA foreign_keys = on;", nil); err != nil {
 				return fmt.Errorf("migrate database: reenable foreign keys: %w", err)
 			}
 		}
 	}
 	return nil
+}
+
+func userVersion(conn *sqlite.Conn) (int32, error) {
+	var version int32
+	err := sqlitex.ExecuteTransient(conn, "PRAGMA user_version;", &sqlitex.ExecOptions{
+		ResultFunc: func(stmt *sqlite.Stmt) error {
+			version = stmt.ColumnInt32(0)
+			return nil
+		},
+	})
+	if err != nil {
+		return 0, fmt.Errorf("get database user_version: %w", err)
+	}
+	return version, nil
 }
 
 func rollback(conn *sqlite.Conn) {
@@ -397,7 +389,7 @@ func rollback(conn *sqlite.Conn) {
 	sqlitex.ExecuteTransient(conn, "ROLLBACK;", nil)
 }
 
-func ensureAppID(conn *sqlite.Conn, wantAppID int32, userVersionStmt *sqlite.Stmt) (schemaVersion int, err error) {
+func ensureAppID(conn *sqlite.Conn, wantAppID int32) (schemaVersion int32, err error) {
 	defer sqlitex.Save(conn)(&err)
 
 	var hasSchema bool
@@ -423,11 +415,8 @@ func ensureAppID(conn *sqlite.Conn, wantAppID int32, userVersionStmt *sqlite.Stm
 	if dbAppID != wantAppID && !(dbAppID == 0 && !hasSchema) {
 		return 0, fmt.Errorf("database application_id = %#x (expected %#x)", dbAppID, wantAppID)
 	}
-	if _, err := userVersionStmt.Step(); err != nil {
-		return 0, err
-	}
-	schemaVersion = userVersionStmt.ColumnInt(0)
-	if err := userVersionStmt.Reset(); err != nil {
+	schemaVersion, err = userVersion(conn)
+	if err != nil {
 		return 0, err
 	}
 	// Using Sprintf because PRAGMAs don't permit arbitrary expressions, and thus

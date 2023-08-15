@@ -5,7 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-[Unreleased]: https://github.com/zombiezen/go-sqlite/compare/v0.13.0...main
+[Unreleased]: https://github.com/zombiezen/go-sqlite/compare/v0.13.1...main
+
+## [0.13.1][] - 2023-08-15
+
+Version 0.13.1 fixed a bug with the `sqlitemigration` package.
+
+[0.13.1]: https://github.com/zombiezen/go-sqlite/releases/tag/v0.13.1
+
+### Fixed
+
+- `sqlitemigration` will no longer disable foreign keys during operation
+  ([#54](https://github.com/zombiezen/go-sqlite/issues/54)).
 
 ## [0.13.0][] - 2023-03-28
 

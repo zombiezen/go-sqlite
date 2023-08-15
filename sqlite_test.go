@@ -948,6 +948,43 @@ func TestSerialize(t *testing.T) {
 	}
 }
 
+func TestForeignKey(t *testing.T) {
+	c, err := sqlite.OpenConn(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := c.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	err = sqlitex.ExecuteTransient(c, `PRAGMA foreign_keys = on;`, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = sqlitex.ExecuteScript(c, `CREATE TABLE artist(
+  artistid    INTEGER PRIMARY KEY,
+  artistname  TEXT
+);
+CREATE TABLE track(
+  trackid     INTEGER,
+  trackname   TEXT,
+  trackartist INTEGER,
+  FOREIGN KEY(trackartist) REFERENCES artist(artistid)
+);`, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = sqlitex.ExecuteTransient(c, `INSERT INTO track VALUES(14, 'Mr. Bojangles', 3);`, nil)
+	if err == nil {
+		t.Fatal("No error from breaking foreign key")
+	} else {
+		t.Log("Got (intentional) error:", err)
+	}
+}
+
 func TestMain(m *testing.M) {
 	_ = libc.Environ() // Forces libc.SetEnviron; fixes memory accounting balance for environ(7).
 	libc.MemAuditStart()
