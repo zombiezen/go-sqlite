@@ -27,10 +27,6 @@ import (
 
 // File is a readable, writable, and seekable series of temporary SQLite blobs.
 type File struct {
-	io.Reader
-	io.Writer
-	io.Seeker
-
 	err    error
 	conn   *sqlite.Conn
 	blobs  []*sqlite.Blob
@@ -39,10 +35,12 @@ type File struct {
 	len    bbpos
 }
 
+// NewFile creates a new [File] with a reasonable initial capacity.
 func NewFile(conn *sqlite.Conn) (*File, error) {
 	return NewFileSize(conn, 16*1024)
 }
 
+// NewFileSize creates a new [File] with the given number of bytes of capacity.
 func NewFileSize(conn *sqlite.Conn, initSize int) (*File, error) {
 	bb := &File{conn: conn}
 	stmt := conn.Prep("CREATE TEMP TABLE IF NOT EXISTS BlobBuffer (blob BLOB);")
@@ -136,6 +134,8 @@ func (bb *File) zero(p1, p2 bbpos) error {
 	return nil
 }
 
+// Write writes p to the file.
+// See [io.Writer] for details.
 func (bb *File) Write(p []byte) (n int, err error) {
 	if bb.err != nil {
 		return 0, bb.err
@@ -183,6 +183,8 @@ func (bb *File) Write(p []byte) (n int, err error) {
 	return n, bb.err
 }
 
+// Read reads data into p.
+// See [io.Reader] for details.
 func (bb *File) Read(p []byte) (n int, err error) {
 	if bb.err != nil {
 		return 0, bb.err
@@ -225,6 +227,8 @@ func (bb *File) Read(p []byte) (n int, err error) {
 	return n, nil
 }
 
+// Seek changes the read/write position in the file.
+// See [io.Seeker] for details.
 func (bb *File) Seek(offset int64, whence int) (int64, error) {
 	if bb.err != nil {
 		return 0, bb.err
@@ -267,6 +271,7 @@ func (bb *File) Seek(offset int64, whence int) (int64, error) {
 	return offset, nil
 }
 
+// Truncate changes the size of the file.
 func (bb *File) Truncate(size int64) error {
 	for {
 		for i := 0; i < len(bb.blobs); i++ {
@@ -287,6 +292,7 @@ func (bb *File) Truncate(size int64) error {
 	}
 }
 
+// Len returns the size of the file in bytes.
 func (bb *File) Len() (n int64) {
 	for i := 0; i < bb.len.index; i++ {
 		n += bb.blobs[i].Size()
@@ -295,6 +301,7 @@ func (bb *File) Len() (n int64) {
 	return n
 }
 
+// Cap returns the allocated capacity of the file in bytes.
 func (bb *File) Cap() (n int64) {
 	for i := 0; i < len(bb.blobs); i++ {
 		n += bb.blobs[i].Size()
@@ -302,6 +309,8 @@ func (bb *File) Cap() (n int64) {
 	return n
 }
 
+// Close releases all resources associated with the file,
+// removing the storage from the database.
 func (bb *File) Close() error {
 	if bb.err != nil {
 		return bb.err

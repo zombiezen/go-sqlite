@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 [Unreleased]: https://github.com/zombiezen/go-sqlite/compare/v0.13.1...main
 
+## [Unreleased][]
+
+### Added
+
+- Added more documentation to `sqlitefile`.
+
+### Removed
+
+- Removed the `io.*` interface fields on `sqlitefile.Buffer` and `sqlitefile.File`.
+  These were unused.
+
 ## [0.13.1][] - 2023-08-15
 
 Version 0.13.1 fixed a bug with the `sqlitemigration` package.

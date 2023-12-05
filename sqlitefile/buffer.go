@@ -31,12 +31,8 @@ import (
 // Unlike a single SQLite blob, a Buffer can grow beyond its initial size.
 // The blobs are allocated in a temporary table.
 //
-// A Buffer is very similar to a bytes.Buffer.
+// A Buffer is very similar to a [bytes.Buffer].
 type Buffer struct {
-	io.Reader
-	io.Writer
-	io.ByteScanner
-
 	err  error
 	conn *sqlite.Conn
 
@@ -158,6 +154,7 @@ func (bb *Buffer) UnreadByte() error {
 	return nil
 }
 
+// Write appends bytes to the buffer, growing it as needed.
 func (bb *Buffer) Write(p []byte) (n int, err error) {
 	if bb.err != nil {
 		return 0, bb.err
@@ -182,6 +179,7 @@ func (bb *Buffer) Write(p []byte) (n int, err error) {
 	return n, nil
 }
 
+// WriteString appends a string to the buffer, growing it as needed.
 func (bb *Buffer) WriteString(p string) (n int, err error) {
 	if bb.err != nil {
 		return 0, bb.err
@@ -243,6 +241,8 @@ func (bb *Buffer) rbufFill() error {
 	return nil
 }
 
+// ReadByte reads a byte from the beginning of the buffer,
+// or returns io.EOF if the buffer is empty.
 func (bb *Buffer) ReadByte() (byte, error) {
 	if bb.err != nil {
 		return 0, bb.err
@@ -255,6 +255,7 @@ func (bb *Buffer) ReadByte() (byte, error) {
 	return c, nil
 }
 
+// Read reads data from the beginning of the buffer.
 func (bb *Buffer) Read(p []byte) (n int, err error) {
 	if bb.err != nil {
 		return 0, bb.err
@@ -271,6 +272,7 @@ func (bb *Buffer) Read(p []byte) (n int, err error) {
 	return n, nil
 }
 
+// Len returns the number of unread bytes written to the buffer.
 func (bb *Buffer) Len() (n int64) {
 	n = int64(len(bb.rbuf) - bb.roff)
 	n += int64(cap(bb.rbuf) * len(bb.blobs))
@@ -278,11 +280,15 @@ func (bb *Buffer) Len() (n int64) {
 	return n
 }
 
+// Cap returns the number of bytes that have been allocated for this buffer,
+// both in memory as well as in the database.
 func (bb *Buffer) Cap() (n int64) {
 	pageSize := int64(cap(bb.rbuf))
 	return (2 + int64(len(bb.blobs)+len(bb.freelist))) * pageSize
 }
 
+// Reset empties the buffer,
+// but retains the blobs written to the database for future writes.
 func (bb *Buffer) Reset() {
 	bb.rbuf = bb.rbuf[:0]
 	bb.wbuf = bb.wbuf[:0]
@@ -291,6 +297,8 @@ func (bb *Buffer) Reset() {
 	bb.blobs = nil
 }
 
+// Close releases all resources associated with the file,
+// removing the storage from the database.
 func (bb *Buffer) Close() error {
 	close := func(tblob tblob) {
 		err := tblob.blob.Close()

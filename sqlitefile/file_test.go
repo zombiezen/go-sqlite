@@ -18,12 +18,20 @@
 package sqlitefile
 
 import (
-	"io/ioutil"
+	"io"
+	"os"
 	"testing"
 
 	"crawshaw.io/iox/ioxtest"
 	"zombiezen.com/go/sqlite"
 )
+
+var _ interface {
+	io.Reader
+	io.Writer
+	io.Seeker
+	io.Closer
+} = (*File)(nil)
 
 func TestFileRand(t *testing.T) {
 	conn, err := sqlite.OpenConn(":memory:", 0)
@@ -36,7 +44,7 @@ func TestFileRand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f2, err := ioutil.TempFile("", "sqlitex")
+	f2, err := os.CreateTemp("", "sqlitex")
 	if err != nil {
 		t.Fatal(err)
 	}

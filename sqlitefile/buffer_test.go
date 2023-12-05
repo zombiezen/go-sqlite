@@ -19,6 +19,7 @@ package sqlitefile
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"testing"
 
@@ -26,6 +27,15 @@ import (
 	"zombiezen.com/go/sqlite"
 	"zombiezen.com/go/sqlite/sqlitex"
 )
+
+var _ interface {
+	io.Reader
+	io.Writer
+	io.StringWriter
+	io.ByteScanner
+	io.ByteWriter
+	io.Closer
+} = (*Buffer)(nil)
 
 func TestBuffer(t *testing.T) {
 	conn, err := sqlite.OpenConn(":memory:", 0)
@@ -102,8 +112,8 @@ func TestConcurrentBuffer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	conn1 := dbpool.Get(nil)
-	conn2 := dbpool.Get(nil)
+	conn1 := dbpool.Get(context.Background())
+	conn2 := dbpool.Get(context.Background())
 	defer func() {
 		dbpool.Put(conn1)
 		dbpool.Put(conn2)
