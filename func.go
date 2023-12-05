@@ -34,7 +34,7 @@ import (
 
 var auxdata struct {
 	mu  sync.RWMutex
-	m   map[uintptr]interface{}
+	m   map[uintptr]any
 	ids idGen
 }
 
@@ -68,7 +68,7 @@ func (ctx Context) Conn() *Conn {
 // invocations of the same function.
 //
 // For more details, see https://www.sqlite.org/c3ref/get_auxdata.html
-func (ctx Context) AuxData(arg int) interface{} {
+func (ctx Context) AuxData(arg int) any {
 	id := lib.Xsqlite3_get_auxdata(ctx.tls, ctx.ptr, int32(arg))
 	if id == 0 {
 		return nil
@@ -93,11 +93,11 @@ func (ctx Context) AuxData(arg int) interface{} {
 // invocations of the same function.
 //
 // For more details, see https://www.sqlite.org/c3ref/get_auxdata.html
-func (ctx Context) SetAuxData(arg int, data interface{}) {
+func (ctx Context) SetAuxData(arg int, data any) {
 	auxdata.mu.Lock()
 	id := auxdata.ids.next()
 	if auxdata.m == nil {
-		auxdata.m = make(map[uintptr]interface{})
+		auxdata.m = make(map[uintptr]any)
 	}
 	auxdata.m[id] = data
 	auxdata.mu.Unlock()

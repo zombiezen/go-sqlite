@@ -43,7 +43,7 @@ type ExecOptions struct {
 	//	bool     to BindBool
 	//
 	// All other kinds are printed using fmt.Sprint(v) and passed to BindText.
-	Args []interface{}
+	Args []any
 
 	// Named is the set of named arguments to bind to the statement. Keys must
 	// start with ':', '@', or '$'. See https://sqlite.org/lang_expr.html for more
@@ -58,7 +58,7 @@ type ExecOptions struct {
 	//	bool     to BindBool
 	//
 	// All other kinds are printed using fmt.Sprint(v) and passed to BindText.
-	Named map[string]interface{}
+	Named map[string]any
 
 	// ResultFunc is called for each result row.
 	// If ResultFunc returns an error then iteration ceases
@@ -95,7 +95,7 @@ type ExecOptions struct {
 //
 // Deprecated: Use Execute.
 // Exec skips some argument checks for compatibility with crawshaw.io/sqlite.
-func Exec(conn *sqlite.Conn, query string, resultFn func(stmt *sqlite.Stmt) error, args ...interface{}) error {
+func Exec(conn *sqlite.Conn, query string, resultFn func(stmt *sqlite.Stmt) error, args ...any) error {
 	stmt, err := conn.Prepare(query)
 	if err != nil {
 		return annotateErr(err)
@@ -168,7 +168,7 @@ func ExecuteFS(conn *sqlite.Conn, fsys fs.FS, filename string, opts *ExecOptions
 //
 // Deprecated: Use ExecuteTransient.
 // ExecTransient skips some argument checks for compatibility with crawshaw.io/sqlite.
-func ExecTransient(conn *sqlite.Conn, query string, resultFn func(stmt *sqlite.Stmt) error, args ...interface{}) (err error) {
+func ExecTransient(conn *sqlite.Conn, query string, resultFn func(stmt *sqlite.Stmt) error, args ...any) (err error) {
 	var stmt *sqlite.Stmt
 	var trailingBytes int
 	stmt, trailingBytes, err = conn.PrepareTransient(query)
@@ -329,7 +329,7 @@ func setArg(stmt *sqlite.Stmt, i int, v reflect.Value) {
 	}
 }
 
-func setNamed(stmt *sqlite.Stmt, provided bitset, flags uint8, args map[string]interface{}) error {
+func setNamed(stmt *sqlite.Stmt, provided bitset, flags uint8, args map[string]any) error {
 	if len(args) == 0 {
 		return nil
 	}

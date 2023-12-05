@@ -215,7 +215,7 @@ func ExampleBlob() {
 		conn,
 		`INSERT INTO blobs (myblob) VALUES (zeroblob(?));`,
 		&sqlitex.ExecOptions{
-			Args: []interface{}{len(dataToInsert)},
+			Args: []any{len(dataToInsert)},
 		},
 	)
 	if err != nil {

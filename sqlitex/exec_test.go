@@ -138,7 +138,7 @@ func TestExecuteArgsErrors(t *testing.T) {
 
 	t.Run("TooManyPositional", func(t *testing.T) {
 		err := Execute(conn, `SELECT ?;`, &ExecOptions{
-			Args: []interface{}{1, 2},
+			Args: []any{1, 2},
 		})
 		t.Log(err)
 		if got, want := sqlite.ErrCode(err), sqlite.ResultRange; got != want {
@@ -148,7 +148,7 @@ func TestExecuteArgsErrors(t *testing.T) {
 
 	t.Run("ExtraNamed", func(t *testing.T) {
 		err := Execute(conn, `SELECT :foo;`, &ExecOptions{
-			Named: map[string]interface{}{
+			Named: map[string]any{
 				":foo": 42,
 				":bar": "hi",
 			},
@@ -161,7 +161,7 @@ func TestExecuteArgsErrors(t *testing.T) {
 
 	t.Run("Missing", func(t *testing.T) {
 		err := Execute(conn, `SELECT ?;`, &ExecOptions{
-			Args: []interface{}{},
+			Args: []any{},
 		})
 		t.Log(err)
 		if got, want := sqlite.ErrCode(err), sqlite.ResultError; got != want {
@@ -223,7 +223,7 @@ INSERT INTO t (a, b) VALUES ('a2', :a2);
 `
 
 	err = ExecuteScript(conn, script, &ExecOptions{
-		Named: map[string]interface{}{
+		Named: map[string]any{
 			":a1": 1,
 			":a2": 2,
 		},
@@ -259,7 +259,7 @@ INSERT INTO t (a, b) VALUES ('a2', :a2);
 `
 
 		err = ExecuteScript(conn, script, &ExecOptions{
-			Named: map[string]interface{}{
+			Named: map[string]any{
 				":a1": 1,
 				":a2": 2,
 				":a3": 3,
@@ -285,7 +285,7 @@ INSERT INTO t (a, b) VALUES ('a2', :a2);
 `
 
 		err = ExecuteScript(conn, script, &ExecOptions{
-			Named: map[string]interface{}{
+			Named: map[string]any{
 				":a1": 1,
 			},
 		})

@@ -22,7 +22,7 @@ func ExampleExecute() {
 	}
 
 	err = sqlitex.Execute(conn, "INSERT INTO t (a, b, c, d) VALUES (?, ?, ?, ?);", &sqlitex.ExecOptions{
-		Args: []interface{}{"a1", 1, 42, 1},
+		Args: []any{"a1", 1, 42, 1},
 	})
 	if err != nil {
 		// handle err
@@ -36,7 +36,7 @@ func ExampleExecute() {
 			b = append(b, stmt.ColumnInt64(1))
 			return nil
 		},
-		Args: []interface{}{42, 1},
+		Args: []any{42, 1},
 	})
 	if err != nil {
 		// handle err

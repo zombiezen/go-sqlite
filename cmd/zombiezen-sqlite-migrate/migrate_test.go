@@ -60,7 +60,7 @@ func TestProcess(t *testing.T) {
 				sqliteModule,
 				{
 					Name: mainPkgPath,
-					Files: map[string]interface{}{
+					Files: map[string]any{
 						mainFilename: packagestest.Copy(originalFile),
 					},
 				},
@@ -105,7 +105,7 @@ func TestProcess(t *testing.T) {
 func skeletonModule(importPath string) (packagestest.Module, error) {
 	mod := packagestest.Module{
 		Name:  importPath,
-		Files: make(map[string]interface{}),
+		Files: make(map[string]any),
 	}
 	dir := filepath.Join("testdata", "skeleton", filepath.FromSlash(importPath))
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
@@ -126,7 +126,7 @@ func skeletonModule(importPath string) (packagestest.Module, error) {
 }
 
 type logWriter struct {
-	logger interface{ Logf(string, ...interface{}) }
+	logger interface{ Logf(string, ...any) }
 	buf    []byte
 }
 
