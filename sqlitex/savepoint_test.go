@@ -20,11 +20,12 @@ package sqlitex
 import (
 	"context"
 	"errors"
-	"io/ioutil"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"os"
 
 	"zombiezen.com/go/sqlite"
 )
@@ -369,7 +370,7 @@ func TestSavepointInterruptRollbackLongQuery(t *testing.T) {
 }
 
 func TestSavepointBusySnapshot(t *testing.T) {
-	dir, err := ioutil.TempDir("", "sqlitex-test-")
+	dir, err := os.MkdirTemp("", "sqlitex-test-")
 	if err != nil {
 		t.Fatal(err)
 	}

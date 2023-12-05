@@ -21,7 +21,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -29,6 +28,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"io"
 
 	"modernc.org/libc"
 	"zombiezen.com/go/sqlite"
@@ -439,7 +440,7 @@ func TestBindBytes(t *testing.T) {
 		}
 	}()
 
-	storedVal, err := ioutil.ReadAll(blob)
+	storedVal, err := io.ReadAll(io.Reader(blob))
 	if err != nil {
 		t.Fatalf("SetBytes: Read: %v", err)
 	}
@@ -557,7 +558,7 @@ func (e errWithMessage) Error() string {
 // }
 
 func TestJournalMode(t *testing.T) {
-	dir, err := ioutil.TempDir("", "crawshaw.io")
+	dir, err := os.MkdirTemp("", "crawshaw.io")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -623,7 +624,7 @@ func TestJournalMode(t *testing.T) {
 }
 
 func TestBusyTimeout(t *testing.T) {
-	dir, err := ioutil.TempDir("", "crawshaw.io")
+	dir, err := os.MkdirTemp("", "crawshaw.io")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -21,7 +21,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"io"
-	"io/ioutil"
 	"reflect"
 	"strings"
 	"sync"
@@ -374,7 +373,7 @@ func TestBlobReadWrite(t *testing.T) {
 	if _, err := b.Seek(0, 0); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := ioutil.ReadAll(b); err != nil {
+	if got, err := io.ReadAll(io.Reader(b)); err != nil {
 		t.Fatal(err)
 	} else if want := []byte{1, 2, 3, 4, 5}; !reflect.DeepEqual(got, want) {
 		t.Errorf("want %v, got %v", want, got)
@@ -430,7 +429,7 @@ func TestBlobPtrs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := ioutil.ReadAll(gzr)
+	b, err := io.ReadAll(io.Reader(gzr))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -483,8 +482,8 @@ func TestBlobReadFrom(t *testing.T) {
 	if _, err := blob.Seek(0, io.SeekStart); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := ioutil.ReadAll(blob); string(got) != data || err != nil {
-		t.Errorf("ioutil.ReadAll(blob) = %q, %v; want %q, <nil>", got, err, data)
+	if got, err := io.ReadAll(io.Reader(blob)); string(got) != data || err != nil {
+		t.Errorf("io.ReadAll(blob) = %q, %v; want %q, <nil>", got, err, data)
 	}
 }
 

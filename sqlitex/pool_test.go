@@ -21,7 +21,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sync"
@@ -139,7 +138,7 @@ func TestPoolAfterClose(t *testing.T) {
 }
 
 func TestSharedCacheLock(t *testing.T) {
-	dir, err := ioutil.TempDir("", "sqlite-test-")
+	dir, err := os.MkdirTemp("", "sqlite-test-")
 	if err != nil {
 		t.Fatal(err)
 	}

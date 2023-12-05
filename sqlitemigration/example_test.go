@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -37,7 +36,7 @@ func Example() {
 	}
 
 	// Set up a temporary directory to store the database.
-	dir, err := ioutil.TempDir("", "sqlitemigration")
+	dir, err := os.MkdirTemp("", "sqlitemigration")
 	if err != nil {
 		// handle error
 		log.Fatal(err)
@@ -87,7 +86,7 @@ func Example() {
 func ExampleSchema() {
 	var schema sqlitemigration.Schema
 	for i := 1; ; i++ {
-		migration, err := ioutil.ReadFile(fmt.Sprintf("schema%02d.sql", i))
+		migration, err := os.ReadFile(fmt.Sprintf("schema%02d.sql", i))
 		if errors.Is(err, os.ErrNotExist) {
 			break
 		}

@@ -20,7 +20,6 @@ package sqlite
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"runtime"
 	"sync"
 	"unsafe"
@@ -294,7 +293,7 @@ func (c *Conn) ApplyInverseChangeset(r io.Reader, filterFn func(tableName string
 		pw.CloseWithError(err)
 	}()
 	err := c.ApplyChangeset(pr, filterFn, conflictFn)
-	io.Copy(ioutil.Discard, pr) // wait for invert goroutine to finish
+	io.Copy(io.Discard, pr) // wait for invert goroutine to finish
 	return err
 }
 
