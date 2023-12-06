@@ -5,14 +5,12 @@ name: Publish
 on:
   release:
     types: [published]
+permissions: {}
 jobs:
   go-get:
     name: go get
     runs-on: ubuntu-latest
     steps:
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: "1.20"
     - name: Fetch release from proxy
-      run: go get -d zombiezen.com/go/sqlite@"$(echo "$GITHUB_REF" | sed -e 's:^refs/tags/::')"
+      run: |
+        curl -fsSL "https://proxy.golang.org/zombiezen.com/go/sqlite/@v/$(echo "$GITHUB_REF" | sed -e 's:^refs/tags/::').info"
