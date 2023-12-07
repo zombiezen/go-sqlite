@@ -21,14 +21,14 @@ type IndexConstraint struct {
 	Column int
 	// Op is the constraint's operator.
 	Op IndexConstraintOp
-	// Usable indicates whether [VTable.BestIndex] should consider the constraint.
+	// Usable indicates whether BestIndex should consider the constraint.
 	// Usable may false depending on how tables are ordered in a join.
 	Usable bool
 	// Collation is the name of the collating sequence
 	// that should be used when evaluating the constraint.
 	Collation string
 	// RValue is the right-hand operand, if known during statement preparation.
-	// It's only valid until the end of [VTable.BestIndex].
+	// It's only valid until the end of BestIndex.
 	RValue Value
 	// RValueKnown indicates whether RValue is set.
 	RValueKnown bool

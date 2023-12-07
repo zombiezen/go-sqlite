@@ -59,7 +59,7 @@ type VTableConnectOptions struct {
 }
 
 // VTableConfig specifies the configuration of a [VTable] returned by [VTableConnectFunc].
-// [VTableConfig.Declaration] is the only required field.
+// Declaration is the only required field.
 type VTableConfig struct {
 	// Declaration must be a [CREATE TABLE statement]
 	// that defines the columns in the virtual table and their data type.
@@ -70,9 +70,9 @@ type VTableConfig struct {
 	Declaration string
 
 	// If ConstraintSupport is true, then the virtual table implementation
-	// guarantees that if [WritableVTable.Update] or [WritableVTable.DeleteRow]
-	// returns a [ResultConstraint] error,
-	// it will do so before any modifications to internal or persistent data structures
+	// guarantees that if Update or DeleteRow on [WritableVTable]
+	// return a [ResultConstraint] error,
+	// they will do so before any modifications to internal or persistent data structures
 	// have been made.
 	ConstraintSupport bool
 
@@ -107,7 +107,7 @@ type VTable interface {
 	Destroy() error
 }
 
-// VTableUpdateParams is the set of parameters to the [WritableVTable.Update] method.
+// VTableUpdateParams is the set of parameters to the [WritableVTable] Update method.
 type VTableUpdateParams struct {
 	OldRowID Value
 	NewRowID Value
@@ -169,7 +169,8 @@ type RenameVTable interface {
 	Rename(new string) error
 }
 
-// IndexInputs is the set of arguments that the SQLite core passes to [VTable.BestIndex].
+// IndexInputs is the set of arguments that the SQLite core passes to
+// the [VTable] BestIndex function.
 type IndexInputs struct {
 	// Constraints corresponds to the WHERE clause.
 	Constraints []IndexConstraint
@@ -214,16 +215,17 @@ type IndexOrderBy struct {
 	Desc bool
 }
 
-// IndexOutputs is the information that [VTable.BestIndex] returns to the SQLite core.
+// IndexOutputs is the information that the [VTable] BestIndex function
+// returns to the SQLite core.
 type IndexOutputs struct {
-	// ConstraintUsage is a mapping from [IndexInputs.Constraints]
-	// to [VTableCursor.Filter] arguments.
-	// The mapping is in the same order as [IndexInputs.Constraints]
+	// ConstraintUsage is a mapping from [IndexInputs] Constraints
+	// to [VTableCursor] Filter arguments.
+	// The mapping is in the same order as [IndexInputs] Constraints
 	// and must not contain more than len(IndexInputs.Constraints) elements.
 	// If len(ConstraintUsage) < len(IndexInputs.Constraints),
 	// then ConstraintUsage is treated as if the missing elements have the zero value.
 	ConstraintUsage []IndexConstraintUsage
-	// ID is used to identify the index in [VTableCursor.Filter].
+	// ID is used to identify the index in [VTableCursor] Filter.
 	ID IndexID
 	// OrderByConsumed is true if the output is already ordered.
 	OrderByConsumed bool
@@ -288,16 +290,16 @@ func (outputs *IndexOutputs) copyToC(tls *libc.TLS, infoPtr uintptr) error {
 	return nil
 }
 
-// IndexConstraintUsage maps a single constraint from [IndexInputs.Constraints]
-// to a [VTableCursor.Filter] argument in the [IndexOutputs.ConstraintUsage] list.
+// IndexConstraintUsage maps a single constraint from [IndexInputs] Constraints
+// to a [VTableCursor] Filter argument in the [IndexOutputs] ConstraintUsage list.
 type IndexConstraintUsage struct {
-	// ArgvIndex is the intended [VTableCursor.Filter] argument index plus one.
+	// ArgvIndex is the intended [VTableCursor] Filter argument index plus one.
 	// If ArgvIndex is zero or negative,
-	// then the constraint is not passed to [VTableCursor.Filter].
-	// Within the [IndexOutputs.ConstraintUsage] list,
+	// then the constraint is not passed to Filter.
+	// Within the [IndexOutputs] ConstraintUsage list,
 	// there must be exactly one entry with an ArgvIndex of 1,
 	// another of 2, another of 3, and so forth
-	// to as many or as few as the [VTable.BestIndex] method wants.
+	// to as many or as few as the [VTable] BestIndex method wants.
 	ArgvIndex int
 	// If Omit is true, then it is a hint to SQLite
 	// that the virtual table will guarantee that the constraint will always be satisfied.
@@ -326,14 +328,14 @@ const (
 // VTableCursor is a cursor over a [VTable] used to loop through the table.
 type VTableCursor interface {
 	// Filter begins a search of a virtual table.
-	// The ID is one that is returned by [VTable.BestIndex].
-	// The arguments will be populated as specified by [IndexOutputs.ConstraintUsage].
+	// The ID is one that is returned by [VTable] BestIndex.
+	// The arguments will be populated as specified by ConstraintUsage in [IndexOutputs].
 	Filter(id IndexID, argv []Value) error
 	// Next advances the cursor to the next row of a result set
-	// initiated by [VTableCursor.Filter].
+	// initiated by a call to [VTableCursor] Filter.
 	// If the cursor is already pointing at the last row when this routine is called,
 	// then the cursor no longer points to valid data
-	// and a subsequent call to the [VTableCursor.EOF] method must return true.
+	// and a subsequent call to the [VTableCursor] EOF method must return true.
 	Next() error
 	// Column returns the value for the i-th column of the current row.
 	// Column indices start at 0.
@@ -341,7 +343,7 @@ type VTableCursor interface {
 	// If noChange is true, then the column access is part of an UPDATE operation
 	// during which the column value will not change.
 	// This can be used as a hint to return [Unchanged] instead of fetching the value:
-	// [WritableVTable.Update] implementations can check [Value.NoChange] to test for this condition.
+	// [WritableVTable] Update implementations can check [Value.NoChange] to test for this condition.
 	Column(i int, noChange bool) (Value, error)
 	// RowID returns the row ID of the row that the cursor is currently pointing at.
 	RowID() (int64, error)
