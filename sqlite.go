@@ -1153,6 +1153,12 @@ func (stmt *Stmt) ColumnType(col int) ColumnType {
 	return ColumnType(lib.Xsqlite3_column_type(stmt.conn.tls, stmt.stmt, int32(col)))
 }
 
+// ColumnIsNull reports whether the result column holds NULL.
+// Column indices start at 0.
+func (stmt *Stmt) ColumnIsNull(col int) bool {
+	return stmt.ColumnType(col) == TypeNull
+}
+
 // ColumnText returns a query result as a string.
 //
 // Column indices start at 0.
@@ -1261,6 +1267,15 @@ func (stmt *Stmt) GetLen(colName string) int {
 		return 0
 	}
 	return stmt.ColumnLen(col)
+}
+
+// IsNull reports whether a query result value for colName is NULL.
+func (stmt *Stmt) IsNull(colName string) bool {
+	col, found := stmt.colNames[colName]
+	if !found {
+		return true
+	}
+	return stmt.ColumnIsNull(col)
 }
 
 func malloc(tls *libc.TLS, n types.Size_t) (uintptr, error) {

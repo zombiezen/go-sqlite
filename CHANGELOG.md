@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added `*Stmt.ColumnIsNull` and `*Stmt.IsNull` methods
+  ([#55](https://github.com/zombiezen/go-sqlite/issues/55)).
 - Added more documentation to `sqlitefile`.
 
 ### Changed
