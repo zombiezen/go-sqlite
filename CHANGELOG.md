@@ -23,6 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Removed the `io.*` interface fields on `sqlitefile.Buffer` and `sqlitefile.File`.
   These were unused.
+- Removed the `zombiezen.com/go/sqlite/fs` package.
+  It existed to help transition around Go 1.16,
+  but is no longer useful.
 
 ## [0.13.1][] - 2023-08-15
 

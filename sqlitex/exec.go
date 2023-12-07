@@ -21,11 +21,11 @@ package sqlitex
 import (
 	"fmt"
 	"io"
+	"io/fs"
 	"reflect"
 	"strings"
 
 	"zombiezen.com/go/sqlite"
-	"zombiezen.com/go/sqlite/fs"
 )
 
 // ExecOptions is the set of optional arguments executing a statement.
