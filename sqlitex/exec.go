@@ -15,7 +15,6 @@
 //
 // SPDX-License-Identifier: ISC
 
-// Package sqlitex provides utilities for working with SQLite.
 package sqlitex
 
 import (
@@ -74,7 +73,7 @@ type ExecOptions struct {
 // the error value.
 //
 // Any args provided to Exec are bound to numbered parameters of the
-// query using the Stmt Bind* methods. Basic reflection on args is used
+// query using the [sqlite.Stmt] Bind* methods. Basic reflection on args is used
 // to map:
 //
 //	integers to BindInt64
@@ -93,7 +92,7 @@ type ExecOptions struct {
 // As Exec is implemented using Conn.Prepare, subsequent calls to Exec
 // with the same statement will reuse the cached statement object.
 //
-// Deprecated: Use Execute.
+// Deprecated: Use [Execute].
 // Exec skips some argument checks for compatibility with crawshaw.io/sqlite.
 func Exec(conn *sqlite.Conn, query string, resultFn func(stmt *sqlite.Stmt) error, args ...any) error {
 	stmt, err := conn.Prepare(query)
@@ -113,7 +112,7 @@ func Exec(conn *sqlite.Conn, query string, resultFn func(stmt *sqlite.Stmt) erro
 
 // Execute executes an SQLite query.
 //
-// As Execute is implemented using Conn.Prepare,
+// As Execute is implemented using [sqlite.Conn.Prepare],
 // subsequent calls to Execute with the same statement
 // will reuse the cached statement object.
 func Execute(conn *sqlite.Conn, query string, opts *ExecOptions) error {
@@ -129,15 +128,15 @@ func Execute(conn *sqlite.Conn, query string, opts *ExecOptions) error {
 	return err
 }
 
-// ExecFS is an alias for ExecuteFS.
+// ExecFS is an alias for [ExecuteFS].
 //
-// Deprecated: Call ExecuteFS directly.
+// Deprecated: Call [ExecuteFS] directly.
 func ExecFS(conn *sqlite.Conn, fsys fs.FS, filename string, opts *ExecOptions) error {
 	return ExecuteFS(conn, fsys, filename, opts)
 }
 
 // ExecuteFS executes the single statement in the given SQL file.
-// ExecuteFS is implemented using Conn.Prepare,
+// ExecuteFS is implemented using [sqlite.Conn.Prepare],
 // so subsequent calls to ExecuteFS with the same statement
 // will reuse the cached statement object.
 func ExecuteFS(conn *sqlite.Conn, fsys fs.FS, filename string, opts *ExecOptions) error {
@@ -163,10 +162,10 @@ func ExecuteFS(conn *sqlite.Conn, fsys fs.FS, filename string, opts *ExecOptions
 }
 
 // ExecTransient executes an SQLite query without caching the underlying query.
-// The interface is exactly the same as Exec.
+// The interface is exactly the same as [Exec].
 // It is the spiritual equivalent of sqlite3_exec.
 //
-// Deprecated: Use ExecuteTransient.
+// Deprecated: Use [ExecuteTransient].
 // ExecTransient skips some argument checks for compatibility with crawshaw.io/sqlite.
 func ExecTransient(conn *sqlite.Conn, query string, resultFn func(stmt *sqlite.Stmt) error, args ...any) (err error) {
 	var stmt *sqlite.Stmt
@@ -212,9 +211,9 @@ func ExecuteTransient(conn *sqlite.Conn, query string, opts *ExecOptions) (err e
 	return exec(stmt, forbidMissing|forbidExtra, opts)
 }
 
-// ExecTransientFS is an alias for ExecuteTransientFS.
+// ExecTransientFS is an alias for [ExecuteTransientFS].
 //
-// Deprecated: Call ExecuteTransientFS directly.
+// Deprecated: Call [ExecuteTransientFS] directly.
 func ExecTransientFS(conn *sqlite.Conn, fsys fs.FS, filename string, opts *ExecOptions) error {
 	return ExecuteTransientFS(conn, fsys, filename, opts)
 }
@@ -244,10 +243,11 @@ func ExecuteTransientFS(conn *sqlite.Conn, fsys fs.FS, filename string, opts *Ex
 	return nil
 }
 
-// PrepareTransientFS prepares an SQL statement from a file that is not cached by
-// the Conn. Subsequent calls with the same query will create new Stmts.
-// The caller is responsible for calling Finalize on the returned Stmt when the
-// Stmt is no longer needed.
+// PrepareTransientFS prepares an SQL statement from a file
+// that is not cached by the Conn.
+// Subsequent calls with the same query will create new Stmts.
+// The caller is responsible for calling [sqlite.Stmt.Finalize] on the returned Stmt
+// when the Stmt is no longer needed.
 func PrepareTransientFS(conn *sqlite.Conn, fsys fs.FS, filename string) (*sqlite.Stmt, error) {
 	query, err := readString(fsys, filename)
 	if err != nil {
@@ -377,7 +377,7 @@ func annotateErr(err error) error {
 }
 
 // ExecScript executes a script of SQL statements.
-// It is the same as calling ExecuteScript without options.
+// It is the same as calling [ExecuteScript] without options.
 func ExecScript(conn *sqlite.Conn, queries string) (err error) {
 	return ExecuteScript(conn, queries, nil)
 }
@@ -426,9 +426,9 @@ func ExecuteScript(conn *sqlite.Conn, queries string, opts *ExecOptions) (err er
 	return nil
 }
 
-// ExecScriptFS is an alias for ExecuteScriptFS.
+// ExecScriptFS is an alias for [ExecuteScriptFS].
 //
-// Deprecated: Call ExecuteScriptFS directly.
+// Deprecated: Call [ExecuteScriptFS] directly.
 func ExecScriptFS(conn *sqlite.Conn, fsys fs.FS, filename string, opts *ExecOptions) (err error) {
 	return ExecuteScriptFS(conn, fsys, filename, opts)
 }

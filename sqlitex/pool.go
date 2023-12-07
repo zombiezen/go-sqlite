@@ -105,8 +105,6 @@ func (p *Pool) Get(ctx context.Context) *sqlite.Conn {
 	select {
 	case conn := <-p.free:
 		ctx, cancel := context.WithCancel(ctx)
-		// TODO(maybe)
-		// conn.SetTracer(&tracer{ctx: ctx})
 		conn.SetInterrupt(ctx.Done())
 
 		p.mu.Lock()
@@ -186,60 +184,3 @@ type strerror struct {
 }
 
 func (err strerror) Error() string { return err.msg }
-
-// TODO(maybe)
-
-// type tracer struct {
-// 	ctx       context.Context
-// 	ctxStack  []context.Context
-// 	taskStack []*trace.Task
-// }
-
-// func (t *tracer) pctx() context.Context {
-// 	if len(t.ctxStack) != 0 {
-// 		return t.ctxStack[len(t.ctxStack)-1]
-// 	}
-// 	return t.ctx
-// }
-
-// func (t *tracer) Push(name string) {
-// 	ctx, task := trace.NewTask(t.pctx(), name)
-// 	t.ctxStack = append(t.ctxStack, ctx)
-// 	t.taskStack = append(t.taskStack, task)
-// }
-
-// func (t *tracer) Pop() {
-// 	t.taskStack[len(t.taskStack)-1].End()
-// 	t.taskStack = t.taskStack[:len(t.taskStack)-1]
-// 	t.ctxStack = t.ctxStack[:len(t.ctxStack)-1]
-// }
-
-// func (t *tracer) NewTask(name string) sqlite.TracerTask {
-// 	ctx, task := trace.NewTask(t.pctx(), name)
-// 	return &tracerTask{
-// 		ctx:  ctx,
-// 		task: task,
-// 	}
-// }
-
-// type tracerTask struct {
-// 	ctx    context.Context
-// 	task   *trace.Task
-// 	region *trace.Region
-// }
-
-// func (t *tracerTask) StartRegion(regionType string) {
-// 	if t.region != nil {
-// 		panic("sqlitex.tracerTask.StartRegion: already in region")
-// 	}
-// 	t.region = trace.StartRegion(t.ctx, regionType)
-// }
-
-// func (t *tracerTask) EndRegion() {
-// 	t.region.End()
-// 	t.region = nil
-// }
-
-// func (t *tracerTask) End() {
-// 	t.task.End()
-// }

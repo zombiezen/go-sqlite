@@ -68,16 +68,7 @@ func savepoint(conn *sqlite.Conn, name string) (releaseFn func(*error), err erro
 	if err := Execute(conn, fmt.Sprintf("SAVEPOINT %q;", name), nil); err != nil {
 		return nil, err
 	}
-	// TODO(maybe)
-	// tracer := conn.Tracer()
-	// if tracer != nil {
-	// 	tracer.Push("TX " + name)
-	// }
 	releaseFn = func(errp *error) {
-		// TODO(maybe)
-		// if tracer != nil {
-		// 	tracer.Pop()
-		// }
 		recoverP := recover()
 
 		// If a query was interrupted or if a user exec'd COMMIT or

@@ -38,16 +38,28 @@ func resultTeardown(stmt *sqlite.Stmt) error {
 	return stmt.Reset()
 }
 
+// ResultBool reports whether the first column of the first and only row
+// produced by running stmt
+// is non-zero.
+// It returns an error if there is not exactly one result row.
 func ResultBool(stmt *sqlite.Stmt) (bool, error) {
 	res, err := ResultInt64(stmt)
 	return res != 0, err
 }
 
+// ResultInt returns the first column of the first and only row
+// produced by running stmt
+// as an integer.
+// It returns an error if there is not exactly one result row.
 func ResultInt(stmt *sqlite.Stmt) (int, error) {
 	res, err := ResultInt64(stmt)
 	return int(res), err
 }
 
+// ResultInt64 returns the first column of the first and only row
+// produced by running stmt
+// as an integer.
+// It returns an error if there is not exactly one result row.
 func ResultInt64(stmt *sqlite.Stmt) (int64, error) {
 	if err := resultSetup(stmt); err != nil {
 		return 0, err
@@ -59,6 +71,10 @@ func ResultInt64(stmt *sqlite.Stmt) (int64, error) {
 	return res, nil
 }
 
+// ResultText returns the first column of the first and only row
+// produced by running stmt
+// as text.
+// It returns an error if there is not exactly one result row.
 func ResultText(stmt *sqlite.Stmt) (string, error) {
 	if err := resultSetup(stmt); err != nil {
 		return "", err
@@ -70,6 +86,10 @@ func ResultText(stmt *sqlite.Stmt) (string, error) {
 	return res, nil
 }
 
+// ResultFloat returns the first column of the first and only row
+// produced by running stmt
+// as a real number.
+// It returns an error if there is not exactly one result row.
 func ResultFloat(stmt *sqlite.Stmt) (float64, error) {
 	if err := resultSetup(stmt); err != nil {
 		return 0, err
