@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Replaced `interface{}` with `any`. This should be a compatible change.
+- The minimum supported Go version for this library is now Go 1.20.
+- The minimum `modernc.org/sqlite` version updated to 1.27.0.
 
 ### Removed
 
