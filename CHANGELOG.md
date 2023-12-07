@@ -5,9 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-[Unreleased]: https://github.com/zombiezen/go-sqlite/compare/v0.13.1...main
+[Unreleased]: https://github.com/zombiezen/go-sqlite/compare/v1.0.0...main
 
-## [Unreleased][]
+## [1.0.0][] - 2023-12-07
+
+Version 1.0 is the first officially stable release of `zombiezen.com/go/sqlite`.
+It includes improved documentation and is cleaned up for current versions of Go.
+There are no breaking changes to the API:
+this release is more a recognition that the API has been stable
+and a promise that it will continue to be stable.
+
+[1.0.0]: https://github.com/zombiezen/go-sqlite/releases/tag/v1.0.0
 
 ### Added
 
