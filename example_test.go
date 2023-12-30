@@ -11,6 +11,8 @@ import (
 	"regexp"
 	"time"
 
+	"golang.org/x/text/collate"
+	"golang.org/x/text/language"
 	"zombiezen.com/go/sqlite"
 	"zombiezen.com/go/sqlite/sqlitex"
 )
@@ -326,4 +328,52 @@ func ExampleChangegroup() {
 	if _, err := grp.WriteTo(output); err != nil {
 		// Handle error
 	}
+}
+
+func ExampleConn_SetCollation() {
+	// Create a new database.
+	conn, err := sqlite.OpenConn(":memory:")
+	if err != nil {
+		// handle error
+	}
+	defer conn.Close()
+
+	// Override the built-in NOCASE collating sequence
+	// to be Unicode aware.
+	nocaseCollator := collate.New(language.Und, collate.IgnoreCase)
+	if err := conn.SetCollation("NOCASE", nocaseCollator.CompareString); err != nil {
+		// handle error
+	}
+
+	// Create a table that uses the NOCASE collating sequence.
+	err = sqlitex.ExecuteScript(conn, `
+		CREATE TABLE foo (mytext TEXT COLLATE NOCASE);
+
+		INSERT INTO foo VALUES
+			('atext'),
+			('btext'),
+			('ctext'),
+			('ątext'),
+			('ćtext');
+	`, nil)
+	if err != nil {
+		// handle error
+	}
+
+	// The column will be implicitly ordered using its collating sequence.
+	err = sqlitex.ExecuteTransient(conn, `SELECT mytext FROM foo ORDER BY mytext ASC;`, &sqlitex.ExecOptions{
+		ResultFunc: func(stmt *sqlite.Stmt) error {
+			fmt.Println(stmt.ColumnText(0))
+			return nil
+		},
+	})
+	if err != nil {
+		// handle error
+	}
+	// Output:
+	// atext
+	// ątext
+	// btext
+	// ctext
+	// ćtext
 }

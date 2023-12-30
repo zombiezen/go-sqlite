@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 [Unreleased]: https://github.com/zombiezen/go-sqlite/compare/v1.0.0...main
 
+## [Unreleased][]
+
+### Added
+
+- Added a documentation example for `SetCollation`
+  ([#64](https://github.com/zombiezen/go-sqlite/issues/64)).
+
 ## [1.0.0][] - 2023-12-07
 
 Version 1.0 is the first officially stable release of `zombiezen.com/go/sqlite`.
