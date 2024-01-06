@@ -42,7 +42,7 @@ const VersionNumber = lib.SQLITE_VERSION_NUMBER
 
 // Conn is an open connection to an SQLite3 database.
 //
-// A Conn can only be used by goroutine at a time.
+// A Conn can only be used by one goroutine at a time.
 type Conn struct {
 	tls    *libc.TLS
 	conn   uintptr

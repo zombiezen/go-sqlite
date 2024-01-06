@@ -18,35 +18,35 @@
 /*
 Package sqlite provides a Go interface to SQLite 3.
 
-The semantics of this package are deliberately close to the
-SQLite3 C API, so it is helpful to be familiar with
-http://www.sqlite.org/c3ref/intro.html.
+The semantics of this package are deliberately close to the [SQLite3 C API].
+See the [official C API introduction] for an overview of the basics.
 
-An SQLite connection is represented by a *sqlite.Conn.
+An SQLite connection is represented by a [*Conn].
 Connections cannot be used concurrently.
 A typical Go program will create a pool of connections
-(using Open to create a *sqlitex.Pool) so goroutines can
-borrow a connection while they need to talk to the database.
+(e.g. by using [zombiezen.com/go/sqlite/sqlitex.Open]
+to create a [*zombiezen.com/go/sqlite/sqlitex.Pool])
+so goroutines can borrow a connection
+while they need to talk to the database.
 
 This package assumes SQLite will be used concurrently by the
 process through several connections, so the build options for
-SQLite enable multi-threading and the shared cache:
-https://www.sqlite.org/sharedcache.html
+SQLite enable multi-threading and the [shared cache].
 
 The implementation automatically handles shared cache locking,
-see the documentation on Stmt.Step for details.
+see the documentation on [Stmt.Step] for details.
 
-The optional SQLite 3 extensions compiled in are: session, FTS5, RTree, JSON1,
-and GeoPoly.
+The optional SQLite 3 extensions compiled in are:
+session, FTS5, RTree, JSON1, and GeoPoly.
 
-This is not a database/sql driver. For helper functions that make some kinds of
-statements easier to write, see the sqlitex package.
+This is not a [database/sql] driver.
+For helper functions to make it easier to execute statements,
+see the [zombiezen.com/go/sqlite/sqlitex] package.
 
+# Statement Caching
 
-Statement Caching
-
-Statements are prepared with the Prepare and PrepareTransient methods.
-When using Prepare, statements are keyed inside a connection by the
+Statements are prepared with the [Conn.Prepare] and [Conn.PrepareTransient] methods.
+When using [Conn.Prepare], statements are keyed inside a connection by the
 original query string used to create them. This means long-running
 high-performance code paths can write:
 
@@ -56,31 +56,48 @@ After all the connections in a pool have been warmed up by passing
 through one of these Prepare calls, subsequent calls are simply a
 map lookup that returns an existing statement.
 
+# Transactions
 
-Streaming Blobs
+SQLite transactions can be managed manually with this package
+by directly executing BEGIN / COMMIT / ROLLBACK or
+SAVEPOINT / RELEASE / ROLLBACK statements,
+but there are also helper functions available in [zombiezen.com/go/sqlite/sqlitex]:
 
-The sqlite package supports the SQLite incremental I/O interface for
-streaming blob data into and out of the the database without loading
-the entire blob into a single []byte.
-(This is important when working either with very large blobs, or
-more commonly, a large number of moderate-sized blobs concurrently.)
+  - [zombiezen.com/go/sqlite/sqlitex.Transaction]
+  - [zombiezen.com/go/sqlite/sqlitex.ImmediateTransaction]
+  - [zombiezen.com/go/sqlite/sqlitex.ExclusiveTransaction]
+  - [zombiezen.com/go/sqlite/sqlitex.Save]
 
+# Schema Migrations
 
-Deadlines and Cancellation
+For simple schema migration needs, see the [zombiezen.com/go/sqlite/sqlitemigration] package.
 
-Every connection can have a done channel associated with it using
-the SetInterrupt method. This is typically the channel returned by
-a context.Context Done method.
+# User-Defined Functions
 
-As database connections are long-lived, the SetInterrupt method can
-be called multiple times to reset the associated lifetime.
+Use [Conn.CreateFunction] to register Go functions for use as [SQL functions].
 
+# Streaming Blobs
 
-Transactions
+The sqlite package supports the SQLite incremental I/O interface
+for streaming blob data into and out of the the database
+without loading the entire blob into a single []byte.
+(This is important when working either with very large blobs,
+or more commonly, a large number of moderate-sized blobs concurrently.)
+See [Conn.OpenBlob] for more details.
 
-SQLite transactions have to be managed manually with this package
-by directly calling BEGIN / COMMIT / ROLLBACK or
-SAVEPOINT / RELEASE/ ROLLBACK. The sqlitex has a Savepoint
-function that helps automate this.
+# Deadlines and Cancellation
+
+Every connection can have a done channel associated with it
+using the [Conn.SetInterrupt] method.
+This is typically the channel returned by a [context.Context.Done] method.
+
+As database connections are long-lived,
+the [Conn.SetInterrupt] method can be called multiple times
+to reset the associated lifetime.
+
+[official C API introduction]: https://www.sqlite.org/cintro.html
+[shared cache]: https://www.sqlite.org/sharedcache.html
+[SQL functions]: https://sqlite.org/appfunc.html
+[SQLite3 C API]: https://www.sqlite.org/c3ref/intro.html.
 */
 package sqlite
