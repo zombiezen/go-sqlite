@@ -59,7 +59,7 @@ func ExampleSave() {
 
 func ExamplePool() {
 	// Open a pool.
-	dbpool, err := sqlitex.Open("foo.db", 0, 10)
+	dbpool, err := sqlitex.NewPool("foo.db", sqlitex.PoolOptions{})
 	if err != nil {
 		// handle err
 	}

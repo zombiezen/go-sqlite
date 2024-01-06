@@ -11,8 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added a `sqlitex.NewPool` function
+  with support for a `ConnPrepareFunc`
+  ([#65](https://github.com/zombiezen/go-sqlite/issues/65)).
 - Added a documentation example for `SetCollation`
   ([#64](https://github.com/zombiezen/go-sqlite/issues/64)).
+
+### Deprecated
+
+- Deprecated `sqlitex.Open` in favor of `sqlitex.NewPool`.
 
 ## [1.0.0][] - 2023-12-07
 

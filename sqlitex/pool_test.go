@@ -39,8 +39,10 @@ const poolSize = 20
 // any error is t.Fatal.
 func newMemPool(t *testing.T) *sqlitex.Pool {
 	t.Helper()
-	flags := sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenURI | sqlite.OpenSharedCache
-	dbpool, err := sqlitex.Open("file::memory:?mode=memory&cache=shared", flags, poolSize)
+	dbpool, err := sqlitex.NewPool("file::memory:?mode=memory&cache=shared", sqlitex.PoolOptions{
+		Flags:    sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenURI | sqlite.OpenSharedCache,
+		PoolSize: poolSize,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -257,7 +259,10 @@ func TestPoolPutMatch(t *testing.T) {
 // https://github.com/zombiezen/go-sqlite/issues/14
 func TestPoolWALClose(t *testing.T) {
 	dbName := filepath.Join(t.TempDir(), "wal-close.db")
-	pool, err := sqlitex.Open(dbName, sqlite.OpenReadWrite|sqlite.OpenCreate|sqlite.OpenWAL, 10)
+	pool, err := sqlitex.NewPool(dbName, sqlitex.PoolOptions{
+		Flags:    sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenWAL,
+		PoolSize: 10,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,5 +280,41 @@ func TestPoolWALClose(t *testing.T) {
 	}
 	if _, err := os.Stat(dbName + "-wal"); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("After close: %v; want %v", err, os.ErrNotExist)
+	}
+}
+
+func TestPoolPrepareConn(t *testing.T) {
+	dbName := filepath.Join(t.TempDir(), "foo.db")
+	pool, err := sqlitex.NewPool(dbName, sqlitex.PoolOptions{
+		PrepareConn: func(conn *sqlite.Conn) error {
+			err := sqlitex.ExecuteTransient(conn, `PRAGMA foreign_keys = on;`, nil)
+			if err != nil {
+				t.Error("Prepare internal error:", err)
+			}
+			return err
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	conn := pool.Get(context.Background())
+	if conn == nil {
+		t.Fatal("conn == nil")
+	}
+	defer pool.Put(conn)
+
+	fkEnabled := false
+	err = sqlitex.ExecuteTransient(conn, `PRAGMA foreign_keys;`, &sqlitex.ExecOptions{
+		ResultFunc: func(stmt *sqlite.Stmt) error {
+			fkEnabled = stmt.ColumnBool(0)
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fkEnabled {
+		t.Error("foreign_keys not enabled")
 	}
 }

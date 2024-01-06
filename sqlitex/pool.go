@@ -25,32 +25,62 @@ import (
 	"zombiezen.com/go/sqlite"
 )
 
+// PoolOptions is the set of optional arguments to [NewPool].
+type PoolOptions struct {
+	// Flags is interpreted the same way as the argument to [sqlite.Open].
+	// A Flags value of 0 defaults to:
+	//
+	//  - SQLITE_OPEN_READWRITE
+	//  - SQLITE_OPEN_CREATE
+	//  - SQLITE_OPEN_WAL
+	//  - SQLITE_OPEN_URI
+	Flags sqlite.OpenFlags
+
+	// PoolSize sets an explicit size to the pool.
+	// If less than 1, a reasonable default is used.
+	PoolSize int
+
+	// PrepareConn is called for each connection in the pool to set up functions
+	// and other connection-specific state.
+	PrepareConn ConnPrepareFunc
+}
+
 // Pool is a pool of SQLite connections.
 // It is safe for use by multiple goroutines concurrently.
 type Pool struct {
-	free   chan *sqlite.Conn
-	closed chan struct{}
+	free    chan *sqlite.Conn
+	closed  chan struct{}
+	prepare ConnPrepareFunc
 
-	mu  sync.Mutex
-	all map[*sqlite.Conn]context.CancelFunc
+	mu     sync.Mutex
+	all    map[*sqlite.Conn]context.CancelFunc
+	inited map[*sqlite.Conn]struct{}
 }
 
 // Open opens a fixed-size pool of SQLite connections.
-// A flags value of 0 defaults to:
 //
-//	SQLITE_OPEN_READWRITE
-//	SQLITE_OPEN_CREATE
-//	SQLITE_OPEN_WAL
-//	SQLITE_OPEN_URI
-//	SQLITE_OPEN_NOMUTEX
+// Deprecated: [NewPool] supports more options.
 func Open(uri string, flags sqlite.OpenFlags, poolSize int) (pool *Pool, err error) {
+	return NewPool(uri, PoolOptions{
+		Flags:    flags,
+		PoolSize: poolSize,
+	})
+}
+
+// NewPool opens a fixed-size pool of SQLite connections.
+func NewPool(uri string, opts PoolOptions) (pool *Pool, err error) {
 	if uri == ":memory:" {
 		return nil, strerror{msg: `sqlite: ":memory:" does not work with multiple connections, use "file::memory:?mode=memory"`}
 	}
 
+	poolSize := opts.PoolSize
+	if poolSize < 1 {
+		poolSize = 10
+	}
 	p := &Pool{
-		free:   make(chan *sqlite.Conn, poolSize),
-		closed: make(chan struct{}),
+		free:    make(chan *sqlite.Conn, poolSize),
+		closed:  make(chan struct{}),
+		prepare: opts.PrepareConn,
 	}
 	defer func() {
 		// If an error occurred, call Close outside the lock so this doesn't deadlock.
@@ -59,6 +89,7 @@ func Open(uri string, flags sqlite.OpenFlags, poolSize int) (pool *Pool, err err
 		}
 	}()
 
+	flags := opts.Flags
 	if flags == 0 {
 		flags = sqlite.OpenReadWrite |
 			sqlite.OpenCreate |
@@ -86,18 +117,19 @@ func Open(uri string, flags sqlite.OpenFlags, poolSize int) (pool *Pool, err err
 
 // Get returns an SQLite connection from the Pool.
 //
-// If no Conn is available, Get will block until at least one Conn is returned
-// with Put, or until either the Pool is closed or the context is canceled. If
-// no Conn can be obtained, nil is returned.
+// If no connection is available,
+// Get will block until at least one connection is returned with [Pool.Put],
+// or until either the Pool is closed or the context is canceled.
+// If no connection can be obtained, nil is returned.
 //
-// The provided context is also used to control the execution lifetime of the
-// connection. See Conn.SetInterrupt for details.
+// The provided context is also used to control the execution lifetime of the connection.
+// See [sqlite.Conn.SetInterrupt] for details.
 //
-// Applications must ensure that all non-nil Conns returned from Get are
-// returned to the same Pool with Put.
+// Applications must ensure that all non-nil Conns returned from Get
+// are returned to the same Pool with [Pool.Put].
 //
-// Although ctx historically may be nil, this is not a recommended design
-// pattern.
+// Although ctx historically may be nil,
+// this is not a recommended design pattern.
 func (p *Pool) Get(ctx context.Context) *sqlite.Conn {
 	if ctx == nil {
 		ctx = context.Background()
@@ -108,8 +140,26 @@ func (p *Pool) Get(ctx context.Context) *sqlite.Conn {
 		conn.SetInterrupt(ctx.Done())
 
 		p.mu.Lock()
-		defer p.mu.Unlock()
 		p.all[conn] = cancel
+		inited := true
+		if p.prepare != nil {
+			_, inited = p.inited[conn]
+		}
+		p.mu.Unlock()
+
+		if !inited {
+			if err := p.prepare(conn); err != nil {
+				p.put(conn)
+				return nil
+			}
+
+			p.mu.Lock()
+			if p.inited == nil {
+				p.inited = make(map[*sqlite.Conn]struct{})
+			}
+			p.inited[conn] = struct{}{}
+			p.mu.Unlock()
+		}
 
 		return conn
 	case <-ctx.Done():
@@ -120,11 +170,11 @@ func (p *Pool) Get(ctx context.Context) *sqlite.Conn {
 
 // Put puts an SQLite connection back into the Pool.
 //
-// Put will panic if the conn was not originally created by p. Put(nil) is a
-// no-op.
+// Put will panic if the conn was not originally created by p.
+// Put(nil) is a no-op.
 //
-// Applications must ensure that all non-nil Conns returned from Get are
-// returned to the same Pool with Put.
+// Applications must ensure that all non-nil Conns returned from [Pool.Get]
+// are returned to the same Pool with Put.
 func (p *Pool) Put(conn *sqlite.Conn) {
 	if conn == nil {
 		// See https://github.com/zombiezen/go-sqlite/issues/17
@@ -136,7 +186,10 @@ func (p *Pool) Put(conn *sqlite.Conn) {
 			"connection returned to pool has active statement: %q",
 			query))
 	}
+	p.put(conn)
+}
 
+func (p *Pool) put(conn *sqlite.Conn) {
 	p.mu.Lock()
 	cancel, found := p.all[conn]
 	if found {
@@ -178,6 +231,16 @@ func (p *Pool) Close() (err error) {
 	}
 	return
 }
+
+// A ConnPrepareFunc is called for each connection in a pool
+// to set up connection-specific state.
+// It must be safe to call from multiple goroutines.
+//
+// If the ConnPrepareFunc returns an error,
+// then it will be called the next time the connection is about to be used.
+// Once ConnPrepareFunc returns nil for a given connection,
+// it will not be called on that connection again.
+type ConnPrepareFunc func(conn *sqlite.Conn) error
 
 type strerror struct {
 	msg string

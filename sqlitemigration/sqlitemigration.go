@@ -53,7 +53,7 @@ type MigrationOptions struct {
 
 // Options specifies optional behaviors for the pool.
 type Options struct {
-	// Flags is interpreted the same way as the argument to sqlitex.Open.
+	// Flags is interpreted the same way as the argument to [sqlitex.PoolOptions].
 	Flags sqlite.OpenFlags
 
 	// PoolSize sets an explicit size to the pool. If less than 1, a reasonable
@@ -73,13 +73,6 @@ type Options struct {
 	// PrepareConn is called for each connection in the pool to set up functions
 	// and other connection-specific state.
 	PrepareConn ConnPrepareFunc
-}
-
-func (opts Options) realPoolSize() int {
-	if opts.PoolSize < 1 {
-		return 10
-	}
-	return opts.PoolSize
 }
 
 // Pool is a pool of SQLite connections.
@@ -248,7 +241,10 @@ func (p *Pool) open(ctx context.Context, uri string, schema Schema) (*sqlitex.Po
 			}
 		}
 
-		pool, err := sqlitex.Open(uri, p.opts.Flags, p.opts.realPoolSize())
+		pool, err := sqlitex.NewPool(uri, sqlitex.PoolOptions{
+			Flags:    p.opts.Flags,
+			PoolSize: p.opts.PoolSize,
+		})
 		if err != nil {
 			p.opts.OnError.call(err)
 			continue
@@ -450,13 +446,15 @@ func (f ReportFunc) call(err error) {
 	f(err)
 }
 
-// A ConnPrepareFunc is called for each connection in a pool to set up
-// connection-specific state. It must be safe to call from multiple goroutines.
+// A ConnPrepareFunc is called for each connection in a pool
+// to set up connection-specific state.
+// It must be safe to call from multiple goroutines.
 //
-// If the ConnPrepareFunc returns an error, then it will be called the next time
-// the connection is about to be used. Once ConnPrepareFunc returns nil for a
-// given connection, it will not be called on that connection again.
-type ConnPrepareFunc func(conn *sqlite.Conn) error
+// If the ConnPrepareFunc returns an error,
+// then it will be called the next time the connection is about to be used.
+// Once ConnPrepareFunc returns nil for a given connection,
+// it will not be called on that connection again.
+type ConnPrepareFunc = sqlitex.ConnPrepareFunc
 
 func stepAndReset(stmt *sqlite.Stmt) error {
 	if _, err := stmt.Step(); err != nil {

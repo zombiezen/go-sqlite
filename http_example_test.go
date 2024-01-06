@@ -16,7 +16,9 @@ var dbpool *sqlitex.Pool
 // Using a Pool to execute SQL in a concurrent HTTP handler.
 func Example_http() {
 	var err error
-	dbpool, err = sqlitex.Open("file:memory:?mode=memory", 0, 10)
+	dbpool, err = sqlitex.NewPool("file:memory:?mode=memory", sqlitex.PoolOptions{
+		PoolSize: 10,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}

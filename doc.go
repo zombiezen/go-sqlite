@@ -24,7 +24,7 @@ See the [official C API introduction] for an overview of the basics.
 An SQLite connection is represented by a [*Conn].
 Connections cannot be used concurrently.
 A typical Go program will create a pool of connections
-(e.g. by using [zombiezen.com/go/sqlite/sqlitex.Open]
+(e.g. by using [zombiezen.com/go/sqlite/sqlitex.NewPool]
 to create a [*zombiezen.com/go/sqlite/sqlitex.Pool])
 so goroutines can borrow a connection
 while they need to talk to the database.
