@@ -297,6 +297,11 @@ func TestPoolPrepareConn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		if err := pool.Close(); err != nil {
+			t.Error("Close:", err)
+		}
+	}()
 
 	conn := pool.Get(context.Background())
 	if conn == nil {
