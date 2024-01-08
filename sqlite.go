@@ -1298,13 +1298,8 @@ func goStringN(s uintptr, n int) string {
 	if s == 0 {
 		return ""
 	}
-	var buf strings.Builder
-	buf.Grow(n)
-	for i := 0; i < n; i++ {
-		buf.WriteByte(*(*byte)(unsafe.Pointer(s)))
-		s++
-	}
-	return buf.String()
+	tmpStr := unsafe.String((*byte)(unsafe.Pointer(s)), n)
+	return strings.Clone(tmpStr)
 }
 
 // cFuncPointer converts a function defined by a function declaration to a C pointer.
