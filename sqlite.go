@@ -20,7 +20,6 @@ package sqlite
 import (
 	"bytes"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 	"unsafe"
@@ -1298,13 +1297,8 @@ func goStringN(s uintptr, n int) string {
 	if s == 0 {
 		return ""
 	}
-	var buf strings.Builder
-	buf.Grow(n)
-	for i := 0; i < n; i++ {
-		buf.WriteByte(*(*byte)(unsafe.Pointer(s)))
-		s++
-	}
-	return buf.String()
+	b := unsafe.Slice((*byte)(unsafe.Pointer(s)), n)
+	return string(b)
 }
 
 // cFuncPointer converts a function defined by a function declaration to a C pointer.
