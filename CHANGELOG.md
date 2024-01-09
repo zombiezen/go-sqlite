@@ -21,6 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Deprecated `sqlitex.Open` in favor of `sqlitex.NewPool`.
 
+### Fixed
+
+- Speed up internal string conversions
+  ([#66](https://github.com/zombiezen/go-sqlite/pull/66)).
+  Thank you [@ffmiruz](https://github.com/ffmiruz) for the profiling work!
+
 ## [1.0.0][] - 2023-12-07
 
 Version 1.0 is the first officially stable release of `zombiezen.com/go/sqlite`.
