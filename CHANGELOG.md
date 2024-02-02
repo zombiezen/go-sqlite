@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 [Unreleased]: https://github.com/zombiezen/go-sqlite/compare/v1.1.0...main
 
+## [Unreleased][]
+
+### Fixed
+
+- Make busy-blocking more responsive
+  ([#75](https://github.com/zombiezen/go-sqlite/issues/75)).
+
 ## [1.1.0][] - 2024-01-14
 
 Version 1.1 introduces the ability to prepare connections on `sqlitex.Pool`,

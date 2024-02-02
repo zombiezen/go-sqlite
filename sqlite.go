@@ -336,6 +336,22 @@ func (c *Conn) SetBlockOnBusy() {
 }
 
 var busyDelays = [...]time.Duration{
+	1 * time.Millisecond,
+	2 * time.Millisecond,
+	5 * time.Millisecond,
+	10 * time.Millisecond,
+	15 * time.Millisecond,
+	20 * time.Millisecond,
+	25 * time.Millisecond,
+	25 * time.Millisecond,
+	25 * time.Millisecond,
+	50 * time.Millisecond,
+	50 * time.Millisecond,
+	100 * time.Millisecond,
+	250 * time.Millisecond,
+	250 * time.Millisecond,
+	500 * time.Millisecond,
+
 	1 * time.Second,
 	2 * time.Second,
 	5 * time.Second,
