@@ -348,22 +348,6 @@ var busyDelays = [...]time.Duration{
 	50 * time.Millisecond,
 	50 * time.Millisecond,
 	100 * time.Millisecond,
-	250 * time.Millisecond,
-	250 * time.Millisecond,
-	500 * time.Millisecond,
-
-	1 * time.Second,
-	2 * time.Second,
-	5 * time.Second,
-	10 * time.Second,
-	15 * time.Second,
-	20 * time.Second,
-	25 * time.Second,
-	25 * time.Second,
-	25 * time.Second,
-	50 * time.Second,
-	50 * time.Second,
-	100 * time.Second,
 }
 
 var busyHandlers sync.Map // sqlite3* -> func(int) bool
