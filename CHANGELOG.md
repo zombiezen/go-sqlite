@@ -5,15 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-[Unreleased]: https://github.com/zombiezen/go-sqlite/compare/v1.1.1...main
+[Unreleased]: https://github.com/zombiezen/go-sqlite/compare/v1.1.2...main
 
-## [Unreleased][]
+## [1.1.2][] - 2024-02-14
+
+Version 1.1.2 updates the `modernc.org/sqlite` version to 1.29.1
+and makes further tweaks to busy-polling.
+
+[1.1.2]: https://github.com/zombiezen/go-sqlite/releases/tag/v1.1.2
 
 ### Changed
 
 - Set the maximum time between busy polls to 100 milliseconds
   (follow-on from [#75](https://github.com/zombiezen/go-sqlite/issues/75)).
-- The minimum `modernc.org/sqlite` version updated to 1.29.1.
+- The minimum `modernc.org/sqlite` version updated to 1.29.1
+  ([#77](https://github.com/zombiezen/go-sqlite/issues/77)).
 
 ## [1.1.1][] - 2024-02-02
 
