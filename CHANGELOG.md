@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Set the maximum time between busy polls to 100 milliseconds
   (follow-on from [#75](https://github.com/zombiezen/go-sqlite/issues/75)).
+- The minimum `modernc.org/sqlite` version updated to 1.29.1.
 
 ## [1.1.1][] - 2024-02-02
 
