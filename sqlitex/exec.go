@@ -64,7 +64,7 @@ type ExecOptions struct {
 	// and the execution function returns the error value.
 	ResultFunc func(stmt *sqlite.Stmt) error
 
-	// ExpectRows, if set will cause Execute calls to return [ErrNoRows] if the statement returns no rows.
+	// ExpectRows, if enabled,  will cause Execute calls to return [ErrNoRows] if the statement returns no rows.
 	ExpectRows bool
 }
 
