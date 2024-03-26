@@ -18,6 +18,7 @@
 package sqlitex
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"testing"
@@ -294,6 +295,59 @@ INSERT INTO t (a, b) VALUES ('a2', :a2);
 			t.Errorf("code = %v; want %v", got, want)
 		}
 	})
+}
+
+func TestExecuteExpectResults(t *testing.T) {
+	conn, err := sqlite.OpenConn(":memory:", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	script := `
+CREATE TABLE t (a TEXT, b INTEGER);
+INSERT INTO t (a, b) VALUES ('a1', 1);
+`
+	err = ExecuteScript(conn, script, &ExecOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	args := map[string]any{
+		":a": "a2",
+	}
+
+	var bVal int
+
+	err = Execute(conn, `SELECT b FROM t WHERE a==:a`, &ExecOptions{
+		Named: args,
+		ResultFunc: func(stmt *sqlite.Stmt) error {
+			bVal = stmt.ColumnInt(0)
+			return nil
+		},
+		ExpectRows: false,
+	})
+	if err != nil {
+		t.Errorf("err=%v, want nil", err)
+	}
+	if bVal != 0 {
+		t.Errorf("bVal=%d, want 0 - ResultFunc should not have run", bVal)
+	}
+
+	err = Execute(conn, `SELECT b FROM t WHERE a==:a`, &ExecOptions{
+		Named: args,
+		ResultFunc: func(stmt *sqlite.Stmt) error {
+			bVal = stmt.ColumnInt(0)
+			return nil
+		},
+		ExpectRows: true,
+	})
+	if !errors.Is(err, ErrNoResults) {
+		t.Errorf("err=%v, want ErrNoResults", err)
+	}
+	if bVal != 0 {
+		t.Errorf("bVal=%d, want 0 - ResultFunc should not have run", bVal)
+	}
 }
 
 func TestBitsetHasAll(t *testing.T) {

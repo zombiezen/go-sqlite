@@ -63,6 +63,9 @@ type ExecOptions struct {
 	// If ResultFunc returns an error then iteration ceases
 	// and the execution function returns the error value.
 	ResultFunc func(stmt *sqlite.Stmt) error
+
+	// ExpectRows, if set will cause Execute calls to return [ErrNoRows] if the statement returns no rows.
+	ExpectRows bool
 }
 
 // Exec executes an SQLite query.
@@ -289,6 +292,7 @@ func exec(stmt *sqlite.Stmt, flags uint8, opts *ExecOptions) (err error) {
 		}
 		return fmt.Errorf("sqlitex.Exec: missing argument for %s", name)
 	}
+	hasResults := false
 	for {
 		hasRow, err := stmt.Step()
 		if err != nil {
@@ -297,11 +301,15 @@ func exec(stmt *sqlite.Stmt, flags uint8, opts *ExecOptions) (err error) {
 		if !hasRow {
 			break
 		}
+		hasResults = true
 		if opts != nil && opts.ResultFunc != nil {
 			if err := opts.ResultFunc(stmt); err != nil {
 				return err
 			}
 		}
+	}
+	if opts != nil && opts.ExpectRows && !hasResults {
+		return ErrNoResults
 	}
 	return nil
 }
