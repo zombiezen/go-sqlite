@@ -71,8 +71,8 @@ func ExamplePool() {
 
 	// While handling a request:
 	ctx := context.TODO()
-	conn := dbpool.Get(ctx)
-	if conn == nil {
+	conn, err := dbpool.Take(ctx)
+	if err != nil {
 		// handle err
 	}
 	defer dbpool.Put(conn)

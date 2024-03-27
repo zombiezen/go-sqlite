@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 [Unreleased]: https://github.com/zombiezen/go-sqlite/compare/v1.1.2...main
 
+## [Unreleased][]
+
+### Added
+
+- `sqlitex.Pool` has a new method `Take`
+  which returns an `error` along with a `Conn`
+  ([#83](https://github.com/zombiezen/go-sqlite/issues/83)).
+
+### Deprecated
+
+- The `sqlitex.Pool.Get` method has been deprecated
+  in favor of the new `Take` method.
+
 ## [1.1.2][] - 2024-02-14
 
 Version 1.1.2 updates the `modernc.org/sqlite` version to 1.29.1
