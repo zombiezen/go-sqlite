@@ -86,6 +86,29 @@ func TestExecNil(t *testing.T) {
 	}
 }
 
+func TestExecBadSyntax(t *testing.T) {
+	conn, err := sqlite.OpenConn(":memory:", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	err = ExecuteTransient(conn, " \nSELECT );", &ExecOptions{
+		ResultFunc: func(stmt *sqlite.Stmt) error {
+			t.Error("ResultFunc called")
+			return nil
+		},
+	})
+	if err == nil {
+		t.Fatal("No error returned")
+	}
+	t.Log("Message:", err)
+	got, ok := sqlite.ErrorOffset(err)
+	if want := 9; got != want || ok == false {
+		t.Errorf("sqlite.ErrorOffset(err) = %d, %t; want %d, true", got, ok, want)
+	}
+}
+
 func TestExecErr(t *testing.T) {
 	conn, err := sqlite.OpenConn(":memory:", 0)
 	if err != nil {

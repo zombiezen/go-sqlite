@@ -97,7 +97,7 @@ type ExecOptions struct {
 func Exec(conn *sqlite.Conn, query string, resultFn func(stmt *sqlite.Stmt) error, args ...any) error {
 	stmt, err := conn.Prepare(query)
 	if err != nil {
-		return annotateErr(err)
+		return err
 	}
 	err = exec(stmt, 0, &ExecOptions{
 		Args:       args,
@@ -118,7 +118,7 @@ func Exec(conn *sqlite.Conn, query string, resultFn func(stmt *sqlite.Stmt) erro
 func Execute(conn *sqlite.Conn, query string, opts *ExecOptions) error {
 	stmt, err := conn.Prepare(query)
 	if err != nil {
-		return annotateErr(err)
+		return err
 	}
 	err = exec(stmt, forbidMissing|forbidExtra, opts)
 	resetErr := stmt.Reset()
@@ -142,21 +142,21 @@ func ExecFS(conn *sqlite.Conn, fsys fs.FS, filename string, opts *ExecOptions) e
 func ExecuteFS(conn *sqlite.Conn, fsys fs.FS, filename string, opts *ExecOptions) error {
 	query, err := readString(fsys, filename)
 	if err != nil {
-		return fmt.Errorf("exec: %w", err)
+		return fmt.Errorf("sqlitex: execute: %w", err)
 	}
 
 	stmt, err := conn.Prepare(strings.TrimSpace(query))
 	if err != nil {
-		return fmt.Errorf("exec %s: %w", filename, err)
+		return fmt.Errorf("sqlitex: execute %s: %w", filename, err)
 	}
 	err = exec(stmt, forbidMissing|forbidExtra, opts)
 	resetErr := stmt.Reset()
 	if err != nil {
 		// Don't strip the error query: we already do this inside exec.
-		return fmt.Errorf("exec %s: %w", filename, err)
+		return fmt.Errorf("sqlitex: execute %s: %w", filename, err)
 	}
 	if resetErr != nil {
-		return fmt.Errorf("exec %s: %w", filename, err)
+		return fmt.Errorf("sqlitex: execute %s: %w", filename, err)
 	}
 	return nil
 }
@@ -172,7 +172,7 @@ func ExecTransient(conn *sqlite.Conn, query string, resultFn func(stmt *sqlite.S
 	var trailingBytes int
 	stmt, trailingBytes, err = conn.PrepareTransient(query)
 	if err != nil {
-		return annotateErr(err)
+		return err
 	}
 	defer func() {
 		ferr := stmt.Finalize()
@@ -181,7 +181,7 @@ func ExecTransient(conn *sqlite.Conn, query string, resultFn func(stmt *sqlite.S
 		}
 	}()
 	if trailingBytes != 0 {
-		return fmt.Errorf("sqlitex.Exec: query %q has trailing bytes", query)
+		return fmt.Errorf("sqlitex: execute: query %q has trailing bytes", query)
 	}
 	return exec(stmt, 0, &ExecOptions{
 		Args:       args,
@@ -197,7 +197,7 @@ func ExecuteTransient(conn *sqlite.Conn, query string, opts *ExecOptions) (err e
 	var trailingBytes int
 	stmt, trailingBytes, err = conn.PrepareTransient(query)
 	if err != nil {
-		return annotateErr(err)
+		return err
 	}
 	defer func() {
 		ferr := stmt.Finalize()
@@ -206,7 +206,7 @@ func ExecuteTransient(conn *sqlite.Conn, query string, opts *ExecOptions) (err e
 		}
 	}()
 	if trailingBytes != 0 {
-		return fmt.Errorf("sqlitex.Exec: query %q has trailing bytes", query)
+		return fmt.Errorf("sqlitex: execute: query %q has trailing bytes", query)
 	}
 	return exec(stmt, forbidMissing|forbidExtra, opts)
 }
@@ -223,22 +223,22 @@ func ExecTransientFS(conn *sqlite.Conn, fsys fs.FS, filename string, opts *ExecO
 func ExecuteTransientFS(conn *sqlite.Conn, fsys fs.FS, filename string, opts *ExecOptions) error {
 	query, err := readString(fsys, filename)
 	if err != nil {
-		return fmt.Errorf("exec: %w", err)
+		return fmt.Errorf("sqlitex: execute: %w", err)
 	}
 
 	stmt, _, err := conn.PrepareTransient(strings.TrimSpace(query))
 	if err != nil {
-		return fmt.Errorf("exec %s: %w", filename, err)
+		return fmt.Errorf("sqlitex: execute %s: %w", filename, err)
 	}
 	defer stmt.Finalize()
 	err = exec(stmt, forbidMissing|forbidExtra, opts)
 	resetErr := stmt.Reset()
 	if err != nil {
 		// Don't strip the error query: we already do this inside exec.
-		return fmt.Errorf("exec %s: %w", filename, err)
+		return fmt.Errorf("sqlitex: execute %s: %w", filename, err)
 	}
 	if resetErr != nil {
-		return fmt.Errorf("exec %s: %w", filename, err)
+		return fmt.Errorf("sqlitex: execute %s: %w", filename, err)
 	}
 	return nil
 }
@@ -251,11 +251,11 @@ func ExecuteTransientFS(conn *sqlite.Conn, fsys fs.FS, filename string, opts *Ex
 func PrepareTransientFS(conn *sqlite.Conn, fsys fs.FS, filename string) (*sqlite.Stmt, error) {
 	query, err := readString(fsys, filename)
 	if err != nil {
-		return nil, fmt.Errorf("prepare: %w", err)
+		return nil, fmt.Errorf("sqlitex: prepare: %w", err)
 	}
 	stmt, _, err := conn.PrepareTransient(strings.TrimSpace(query))
 	if err != nil {
-		return nil, fmt.Errorf("prepare %s: %w", filename, err)
+		return nil, fmt.Errorf("sqlitex: prepare %s: %w", filename, err)
 	}
 	return stmt, nil
 }
@@ -270,7 +270,7 @@ func exec(stmt *sqlite.Stmt, flags uint8, opts *ExecOptions) (err error) {
 	provided := newBitset(paramCount)
 	if opts != nil {
 		if len(opts.Args) > paramCount {
-			return fmt.Errorf("sqlitex.Exec: %w (len(Args) > BindParamCount(); %d > %d)",
+			return fmt.Errorf("sqlitex: %w (len(Args) > BindParamCount(); %d > %d)",
 				sqlite.ResultRange.ToError(), len(opts.Args), paramCount)
 		}
 		for i, arg := range opts.Args {
@@ -287,7 +287,7 @@ func exec(stmt *sqlite.Stmt, flags uint8, opts *ExecOptions) (err error) {
 		if name == "" {
 			name = fmt.Sprintf("?%d", i)
 		}
-		return fmt.Errorf("sqlitex.Exec: missing argument for %s", name)
+		return fmt.Errorf("sqlitex: missing argument for %s", name)
 	}
 	for {
 		hasRow, err := stmt.Step()
@@ -363,19 +363,6 @@ func setNamed(stmt *sqlite.Stmt, provided bitset, flags uint8, args map[string]a
 	return nil
 }
 
-func annotateErr(err error) error {
-	// TODO(maybe)
-	// if err, isError := err.(sqlite.Error); isError {
-	// 	if err.Loc == "" {
-	// 		err.Loc = "Exec"
-	// 	} else {
-	// 		err.Loc = "Exec: " + err.Loc
-	// 	}
-	// 	return err
-	// }
-	return fmt.Errorf("sqlitex.Exec: %w", err)
-}
-
 // ExecScript executes a script of SQL statements.
 // It is the same as calling [ExecuteScript] without options.
 func ExecScript(conn *sqlite.Conn, queries string) (err error) {
@@ -439,10 +426,10 @@ func ExecScriptFS(conn *sqlite.Conn, fsys fs.FS, filename string, opts *ExecOpti
 func ExecuteScriptFS(conn *sqlite.Conn, fsys fs.FS, filename string, opts *ExecOptions) (err error) {
 	queries, err := readString(fsys, filename)
 	if err != nil {
-		return fmt.Errorf("exec: %w", err)
+		return fmt.Errorf("sqlitex: execute script: %w", err)
 	}
 	if err := ExecuteScript(conn, queries, opts); err != nil {
-		return fmt.Errorf("exec %s: %w", filename, err)
+		return fmt.Errorf("sqlitex: execute %s: %w", filename, err)
 	}
 	return nil
 }

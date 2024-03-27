@@ -175,7 +175,7 @@ func openConn(path string, openFlags OpenFlags) (_ *Conn, err error) {
 	}
 	if c.conn == 0 {
 		// Not enough memory to allocate the sqlite3 object.
-		return nil, fmt.Errorf("sqlite: open %q: %w", path, sqliteError{res})
+		return nil, fmt.Errorf("sqlite: open %q: %w", path, res.ToError())
 	}
 	if res != ResultOK {
 		// sqlite3_open_v2 may still return a sqlite3* just so we can extract the error.
@@ -184,7 +184,7 @@ func openConn(path string, openFlags OpenFlags) (_ *Conn, err error) {
 			res = extres
 		}
 		lib.Xsqlite3_close_v2(tls, c.conn)
-		return nil, fmt.Errorf("sqlite: open %q: %w", path, sqliteError{res})
+		return nil, fmt.Errorf("sqlite: open %q: %w", path, res.ToError())
 	}
 	lib.Xsqlite3_extended_result_codes(tls, c.conn, 1)
 
@@ -220,7 +220,7 @@ func (c *Conn) Close() error {
 	delete(allConns.table, c.conn)
 	allConns.mu.Unlock()
 	if !res.IsSuccess() {
-		return fmt.Errorf("sqlite: close: %w", sqliteError{res})
+		return fmt.Errorf("sqlite: close: %w", res.ToError())
 	}
 	return nil
 }
@@ -381,7 +381,7 @@ func busyHandlerCallback(tls *libc.TLS, pArg uintptr, count int32) int32 {
 func (c *Conn) interrupted() error {
 	select {
 	case <-c.doneCh:
-		return sqliteError{ResultInterrupt}
+		return ResultInterrupt.ToError()
 	default:
 		return nil
 	}
@@ -467,7 +467,7 @@ func (c *Conn) Prepare(query string) (*Stmt, error) {
 // https://www.sqlite.org/c3ref/prepare.html
 func (c *Conn) PrepareTransient(query string) (stmt *Stmt, trailingBytes int, err error) {
 	if c == nil {
-		return nil, 0, fmt.Errorf("sqlite: prepare %q: nil connection", query)
+		return nil, 0, fmt.Errorf("sqlite: prepare: nil connection")
 	}
 	// TODO(soon)
 	// if stmt != nil {
@@ -477,7 +477,11 @@ func (c *Conn) PrepareTransient(query string) (stmt *Stmt, trailingBytes int, er
 	// 		}
 	// 	})
 	// }
-	return c.prepare(query, 0)
+	stmt, trailingBytes, err = c.prepare(query, 0)
+	if err != nil {
+		err = fmt.Errorf("sqlite: prepare: %w", err)
+	}
+	return stmt, trailingBytes, err
 }
 
 func (c *Conn) prepare(query string, flags uint32) (*Stmt, int, error) {
@@ -502,6 +506,10 @@ func (c *Conn) prepare(query string, flags uint32) (*Stmt, int, error) {
 	defer libc.Xfree(c.tls, stmtPtr)
 	res := ResultCode(lib.Xsqlite3_prepare_v3(c.tls, c.conn, cquery, -1, flags, stmtPtr, ctrailingPtr))
 	if err := c.extreserr(res); err != nil {
+		if offset, ok := ErrorOffset(err); ok && offset <= len(query) {
+			line, col := linecol(query[:offset])
+			err = fmt.Errorf("%d:%d: %w", line, col, err)
+		}
 		return nil, 0, err
 	}
 	ctrailing := *(*uintptr)(unsafe.Pointer(ctrailingPtr))
@@ -619,10 +627,33 @@ func (c *Conn) extreserr(res ResultCode) error {
 	if res.IsSuccess() {
 		return nil
 	}
-	if msg := libc.GoString(lib.Xsqlite3_errmsg(c.tls, c.conn)); msg != "" {
-		return fmt.Errorf("%w: %s", res.ToError(), msg)
+	return &extendedError{
+		code:    res,
+		offset:  int(lib.Xsqlite3_error_offset(c.tls, c.conn)),
+		message: libc.GoString(lib.Xsqlite3_errmsg(c.tls, c.conn)),
 	}
-	return res.ToError()
+}
+
+// linecol computes the 1-based line number and column
+// of a character placed after s.
+func linecol(s string) (line, col int) {
+	line, col = 1, 1
+	for _, c := range s {
+		// This is intentionally a bit naive with regards to control characters.
+		// If the user wants greater control,
+		switch c {
+		case '\n':
+			line++
+			col = 1
+		case '\t':
+			const tabWidth = 8
+			locationInTab := (col - 1) % tabWidth
+			col += tabWidth - locationInTab
+		default:
+			col++
+		}
+	}
+	return
 }
 
 // Stmt is an SQLite3 prepared statement.
@@ -645,7 +676,7 @@ type Stmt struct {
 
 func (stmt *Stmt) interrupted() error {
 	if stmt.prepInterrupt {
-		return sqliteError{ResultInterrupt}
+		return ResultInterrupt.ToError()
 	}
 	return stmt.conn.interrupted()
 }
