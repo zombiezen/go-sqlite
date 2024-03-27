@@ -60,6 +60,32 @@ func TestExec(t *testing.T) {
 	}
 }
 
+func TestExecNil(t *testing.T) {
+	err := Execute(nil, `SELECT 1;`, &ExecOptions{
+		ResultFunc: func(stmt *sqlite.Stmt) error {
+			t.Error("ResultFunc called")
+			return nil
+		},
+	})
+	if err == nil {
+		t.Error("No error returned")
+	} else {
+		t.Log("Execute message:", err)
+	}
+
+	err = ExecuteTransient(nil, `SELECT 1;`, &ExecOptions{
+		ResultFunc: func(stmt *sqlite.Stmt) error {
+			t.Error("ResultFunc called")
+			return nil
+		},
+	})
+	if err == nil {
+		t.Error("No error returned")
+	} else {
+		t.Log("ExecuteTransient message:", err)
+	}
+}
+
 func TestExecErr(t *testing.T) {
 	conn, err := sqlite.OpenConn(":memory:", 0)
 	if err != nil {
