@@ -277,12 +277,13 @@ func oneResult(opts *ExecOptions) (*ExecOptions, func() bool) {
 		opts.ResultFunc = func(*sqlite.Stmt) error { return nil }
 	}
 	called := false
+	rf := opts.ResultFunc
 	opts.ResultFunc = func(stmt *sqlite.Stmt) error {
 		if called {
 			return errMultipleResults
 		}
 		called = true
-		return opts.ResultFunc(stmt)
+		return rf(stmt)
 	}
 	return opts, func() bool { return called }
 }

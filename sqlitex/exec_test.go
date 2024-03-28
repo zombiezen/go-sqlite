@@ -314,50 +314,57 @@ INSERT INTO t (a, b) VALUES ('a2', 1);
 		t.Fatal(err)
 	}
 
-	aVal := ""
-	err = SingleRow(conn, `SELECT a FROM t WHERE b==?`, &ExecOptions{
-		Args: []any{0},
-		ResultFunc: func(stmt *sqlite.Stmt) error {
-			aVal = stmt.ColumnText(0)
-			return nil
-		},
+	t.Run("NoResults", func(t *testing.T) {
+		aVal := ""
+		got := SingleRow(conn, `SELECT a FROM t WHERE b==?`, &ExecOptions{
+			Args: []any{0},
+			ResultFunc: func(stmt *sqlite.Stmt) error {
+				aVal = stmt.ColumnText(0)
+				return nil
+			},
+		})
+		if !errors.Is(got, errNoResults) {
+			t.Errorf("err = %v; want %v", got, errNoResults)
+		}
+		if aVal != "" {
+			t.Errorf(`aVal = %q; want ""`, aVal)
+		}
 	})
-	if !errors.Is(err, errNoResults) {
-		t.Errorf("err=%v, want errNoResults", err)
-	}
-	if aVal != "" {
-		t.Errorf(`aVal=%q, want ""- ResultFunc should not have run`, aVal)
-	}
 
-	aVal = ""
-	err = SingleRow(conn, `SELECT a FROM t WHERE b==?`, &ExecOptions{
-		Args: []any{1},
-		ResultFunc: func(stmt *sqlite.Stmt) error {
-			aVal = stmt.ColumnText(0)
-			return nil
-		},
+	t.Run("MultipleResults", func(t *testing.T) {
+		aVal := ""
+		got := SingleRow(conn, `SELECT a FROM t WHERE b==?`, &ExecOptions{
+			Args: []any{1},
+			ResultFunc: func(stmt *sqlite.Stmt) error {
+				t.Logf("setting aval to %s", stmt.ColumnText(0))
+				aVal = stmt.ColumnText(0)
+				return nil
+			},
+		})
+		if !errors.Is(got, errMultipleResults) {
+			t.Errorf("err = %v; want %v", got, errMultipleResults)
+		}
+		if aVal != "a1" {
+			t.Errorf(`aVal = %q; want "a1"`, aVal)
+		}
 	})
-	if !errors.Is(err, errMultipleResults) {
-		t.Errorf("err=%v, want errMultipleresults", err)
-	}
-	if aVal != "a1" {
-		t.Errorf(`aVal=%q, want "a1"- ResultFunc should have run once`, aVal)
-	}
 
-	bVal := 0
-	err = SingleRow(conn, `SELECT b FROM t WHERE a==?`, &ExecOptions{
-		Args: []any{"a1"},
-		ResultFunc: func(stmt *sqlite.Stmt) error {
-			bVal = stmt.ColumnInt(0)
-			return nil
-		},
+	t.Run("SingleResult", func(t *testing.T) {
+		bVal := 0
+		got := SingleRow(conn, `SELECT b FROM t WHERE a==?`, &ExecOptions{
+			Args: []any{"a1"},
+			ResultFunc: func(stmt *sqlite.Stmt) error {
+				bVal = stmt.ColumnInt(0)
+				return nil
+			},
+		})
+		if got != nil {
+			t.Errorf("err = %v; want nil", got)
+		}
+		if bVal != 1 {
+			t.Errorf(`bVal = %d; want 1`, bVal)
+		}
 	})
-	if err != nil {
-		t.Errorf("err=%v, want nil", err)
-	}
-	if bVal != 1 {
-		t.Errorf(`bVal=%d, want "1"- ResultFunc should have run`, bVal)
-	}
 }
 
 func TestBitsetHasAll(t *testing.T) {
