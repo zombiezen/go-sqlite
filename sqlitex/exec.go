@@ -128,50 +128,6 @@ func Execute(conn *sqlite.Conn, query string, opts *ExecOptions) error {
 	return err
 }
 
-// SingleRow is [Exec], but it returns an error if there is not exactly one result returned.
-func SingleRow(conn *sqlite.Conn, query string, opts *ExecOptions) error {
-	oOpts, gotResult := oneResult(opts)
-	err := Execute(conn, query, oOpts)
-	if err != nil {
-		return err
-	}
-	if !gotResult() {
-		return errNoResults
-	}
-	return nil
-}
-
-// SingleRowFS is [ExecuteFS], but but it returns an error if there is not exactly one result returned.
-func SingleRowFS(conn *sqlite.Conn, fsys fs.FS, filename string, opts *ExecOptions) error {
-	oOpts, gotResult := oneResult(opts)
-	err := ExecuteFS(conn, fsys, filename, oOpts)
-	if err != nil {
-		return err
-	}
-	if !gotResult() {
-		return errNoResults
-	}
-	return nil
-}
-
-func oneResult(opts *ExecOptions) (*ExecOptions, func() bool) {
-	if opts == nil {
-		opts = &ExecOptions{}
-	}
-	if opts.ResultFunc == nil {
-		opts.ResultFunc = func(*sqlite.Stmt) error { return nil }
-	}
-	called := false
-	opts.ResultFunc = func(stmt *sqlite.Stmt) error {
-		if called {
-			return errMultipleResults
-		}
-		called = true
-		return opts.ResultFunc(stmt)
-	}
-	return opts, func() bool { return called }
-}
-
 // ExecFS is an alias for [ExecuteFS].
 //
 // Deprecated: Call [ExecuteFS] directly.
@@ -285,6 +241,50 @@ func ExecuteTransientFS(conn *sqlite.Conn, fsys fs.FS, filename string, opts *Ex
 		return fmt.Errorf("exec %s: %w", filename, err)
 	}
 	return nil
+}
+
+// SingleRow is [Execute], but it returns an error if there is not exactly one result returned.
+func SingleRow(conn *sqlite.Conn, query string, opts *ExecOptions) error {
+	oOpts, gotResult := oneResult(opts)
+	err := Execute(conn, query, oOpts)
+	if err != nil {
+		return err
+	}
+	if !gotResult() {
+		return errNoResults
+	}
+	return nil
+}
+
+// SingleRowFS is [ExecuteFS], but but it returns an error if there is not exactly one result returned.
+func SingleRowFS(conn *sqlite.Conn, fsys fs.FS, filename string, opts *ExecOptions) error {
+	oOpts, gotResult := oneResult(opts)
+	err := ExecuteFS(conn, fsys, filename, oOpts)
+	if err != nil {
+		return err
+	}
+	if !gotResult() {
+		return errNoResults
+	}
+	return nil
+}
+
+func oneResult(opts *ExecOptions) (*ExecOptions, func() bool) {
+	if opts == nil {
+		opts = &ExecOptions{}
+	}
+	if opts.ResultFunc == nil {
+		opts.ResultFunc = func(*sqlite.Stmt) error { return nil }
+	}
+	called := false
+	opts.ResultFunc = func(stmt *sqlite.Stmt) error {
+		if called {
+			return errMultipleResults
+		}
+		called = true
+		return opts.ResultFunc(stmt)
+	}
+	return opts, func() bool { return called }
 }
 
 // PrepareTransientFS prepares an SQL statement from a file
