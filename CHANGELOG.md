@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 [Unreleased]: https://github.com/zombiezen/go-sqlite/compare/v1.1.2...main
 
+Version 1.2.0 introduces `sqlitex.SingleRow` and `sqlitex.SingleRowFS` to
+support the common use case of queries that are expected to return only
+one result row.
+
+[1.2.0]: https://github.com/zombiezen/go-sqlite/releases/tag/v1.2.0
+
+### Changed
+
+- Add `sqlitex.SingleRow` and `sqlite.SingleRowFS`
+  (follow-on from [#85](https://github.com/zombiezen/go-sqlite/issues/85)).
+
 ## [1.1.2][] - 2024-02-14
 
 Version 1.1.2 updates the `modernc.org/sqlite` version to 1.29.1
