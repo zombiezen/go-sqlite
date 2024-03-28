@@ -18,6 +18,7 @@
 package sqlitex
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"testing"
@@ -294,6 +295,69 @@ INSERT INTO t (a, b) VALUES ('a2', :a2);
 			t.Errorf("code = %v; want %v", got, want)
 		}
 	})
+}
+
+func TestSingleRow(t *testing.T) {
+	conn, err := sqlite.OpenConn(":memory:", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	script := `
+CREATE TABLE t (a TEXT, b INTEGER);
+INSERT INTO t (a, b) VALUES ('a1', 1);
+INSERT INTO t (a, b) VALUES ('a2', 1);
+`
+	err = ExecuteScript(conn, script, &ExecOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	aVal := ""
+	err = SingleRow(conn, `SELECT a FROM t WHERE b==?`, &ExecOptions{
+		Args: []any{0},
+		ResultFunc: func(stmt *sqlite.Stmt) error {
+			aVal = stmt.ColumnText(0)
+			return nil
+		},
+	})
+	if !errors.Is(err, errNoResults) {
+		t.Errorf("err=%v, want errNoResults", err)
+	}
+	if aVal != "" {
+		t.Errorf(`aVal=%q, want ""- ResultFunc should not have run`, aVal)
+	}
+
+	aVal = ""
+	err = SingleRow(conn, `SELECT a FROM t WHERE b==?`, &ExecOptions{
+		Args: []any{1},
+		ResultFunc: func(stmt *sqlite.Stmt) error {
+			aVal = stmt.ColumnText(0)
+			return nil
+		},
+	})
+	if !errors.Is(err, errMultipleResults) {
+		t.Errorf("err=%v, want errMultipleresults", err)
+	}
+	if aVal != "a1" {
+		t.Errorf(`aVal=%q, want "a1"- ResultFunc should have run once`, aVal)
+	}
+
+	bVal := 0
+	err = SingleRow(conn, `SELECT b FROM t WHERE a==?`, &ExecOptions{
+		Args: []any{"a1"},
+		ResultFunc: func(stmt *sqlite.Stmt) error {
+			bVal = stmt.ColumnInt(0)
+			return nil
+		},
+	})
+	if err != nil {
+		t.Errorf("err=%v, want nil", err)
+	}
+	if bVal != 1 {
+		t.Errorf(`bVal=%d, want "1"- ResultFunc should have run`, bVal)
+	}
 }
 
 func TestBitsetHasAll(t *testing.T) {
