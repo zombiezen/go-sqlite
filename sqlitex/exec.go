@@ -243,6 +243,51 @@ func ExecuteTransientFS(conn *sqlite.Conn, fsys fs.FS, filename string, opts *Ex
 	return nil
 }
 
+// SingleRow is [Execute], but it returns an error if there is not exactly one result returned.
+func SingleRow(conn *sqlite.Conn, query string, opts *ExecOptions) error {
+	oOpts, gotResult := oneResult(opts)
+	err := Execute(conn, query, oOpts)
+	if err != nil {
+		return err
+	}
+	if !gotResult() {
+		return errNoResults
+	}
+	return nil
+}
+
+// SingleRowFS is [ExecuteFS], but but it returns an error if there is not exactly one result returned.
+func SingleRowFS(conn *sqlite.Conn, fsys fs.FS, filename string, opts *ExecOptions) error {
+	oOpts, gotResult := oneResult(opts)
+	err := ExecuteFS(conn, fsys, filename, oOpts)
+	if err != nil {
+		return err
+	}
+	if !gotResult() {
+		return errNoResults
+	}
+	return nil
+}
+
+func oneResult(opts *ExecOptions) (*ExecOptions, func() bool) {
+	if opts == nil {
+		opts = &ExecOptions{}
+	}
+	if opts.ResultFunc == nil {
+		opts.ResultFunc = func(*sqlite.Stmt) error { return nil }
+	}
+	called := false
+	rf := opts.ResultFunc
+	opts.ResultFunc = func(stmt *sqlite.Stmt) error {
+		if called {
+			return errMultipleResults
+		}
+		called = true
+		return rf(stmt)
+	}
+	return opts, func() bool { return called }
+}
+
 // PrepareTransientFS prepares an SQL statement from a file
 // that is not cached by the Conn.
 // Subsequent calls with the same query will create new Stmts.
