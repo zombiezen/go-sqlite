@@ -9,8 +9,10 @@ import (
 	"zombiezen.com/go/sqlite"
 )
 
-var errNoResults = errors.New("sqlite: statement has no results")
-var errMultipleResults = errors.New("sqlite: statement has multiple result rows")
+var (
+	ErrNoResults       = errors.New("sqlite: statement has no results")
+	ErrMultipleResults = errors.New("sqlite: statement has multiple result rows")
+)
 
 func resultSetup(stmt *sqlite.Stmt) error {
 	hasRow, err := stmt.Step()
@@ -20,7 +22,7 @@ func resultSetup(stmt *sqlite.Stmt) error {
 	}
 	if !hasRow {
 		stmt.Reset()
-		return errNoResults
+		return ErrNoResults
 	}
 	return nil
 }
@@ -33,7 +35,7 @@ func resultTeardown(stmt *sqlite.Stmt) error {
 	}
 	if hasRow {
 		stmt.Reset()
-		return errMultipleResults
+		return ErrMultipleResults
 	}
 	return stmt.Reset()
 }
@@ -99,4 +101,17 @@ func ResultFloat(stmt *sqlite.Stmt) (float64, error) {
 		return 0, err
 	}
 	return res, nil
+}
+
+// ResultBytes reads the first column of the first and only row produced by running stmt into buf, returning the number of bytes read.
+// It returns an error if there is not exactly one result row.
+func ResultBytes(stmt *sqlite.Stmt, buf []byte) (int, error) {
+	if err := resultSetup(stmt); err != nil {
+		return 0, err
+	}
+	read := stmt.ColumnBytes(0, buf)
+	if err := resultTeardown(stmt); err != nil {
+		return 0, err
+	}
+	return read, nil
 }
