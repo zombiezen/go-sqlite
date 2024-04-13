@@ -20,6 +20,7 @@ package sqlitex
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"zombiezen.com/go/sqlite"
@@ -38,6 +39,12 @@ type PoolOptions struct {
 
 	// PoolSize sets an explicit size to the pool.
 	// If less than 1, a reasonable default is used.
+	//
+	// Shared cache must be enabled to work with ephemeral
+	// memory connection URIs like
+	// `file:memory:?mode=memory&cache=shared`. Without
+	// shared cache enabled, each connection will represent
+	// a separate database.
 	PoolSize int
 
 	// PrepareConn is called for each connection in the pool to set up functions
@@ -68,9 +75,19 @@ func Open(uri string, flags sqlite.OpenFlags, poolSize int) (pool *Pool, err err
 }
 
 // NewPool opens a fixed-size pool of SQLite connections.
+//
+// The `:memory:` URI is not supported. For ephemeral memory
+// connections use `file:memory:?mode=memory&cache=shared` instead.
+// See [PoolOptions.PoolSize] for details.
 func NewPool(uri string, opts PoolOptions) (pool *Pool, err error) {
-	if uri == ":memory:" {
-		return nil, strerror{msg: `sqlite: ":memory:" does not work with multiple connections, use "file::memory:?mode=memory"`}
+	uriBase, uriParameters, _ := strings.Cut(uri, "?")
+	switch uriBase {
+	case ":memory:":
+		return nil, strerror{msg: `sqlite: ":memory:" does not work with multiple connections, use "file:memory:?mode=memory&cache=shared"`}
+	case "file:memory:":
+		if !strings.Contains(uriParameters, "cache=shared") {
+			return nil, strerror{msg: `sqlite: "file:memory:" does not work with multiple connections without shared cache enabled, use "file:memory:?mode=memory&cache=shared"`}
+		}
 	}
 
 	poolSize := opts.PoolSize
