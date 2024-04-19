@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 [Unreleased]: https://github.com/zombiezen/go-sqlite/compare/v1.2.0...main
 
+## [Unreleased][]
+
+### Fixed
+
+- The error returned from `sqlitex.NewPool`
+  when trying to open an in-memory database
+  now gives correct advice
+  ([#92](https://github.com/zombiezen/go-sqlite/issues/92)).
+
 ## [1.2.0][] - 2024-03-27
 
 Version 1.2.0 adds a `sqlitex.Pool.Take` method
