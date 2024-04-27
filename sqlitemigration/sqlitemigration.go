@@ -130,8 +130,16 @@ func (p *Pool) Close() error {
 	return p.pool.Close()
 }
 
-// Get gets an SQLite connection from the pool.
+// Get is an alias for Take
 func (p *Pool) Get(ctx context.Context) (*sqlite.Conn, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return p.Take(ctx)
+}
+
+// Takes an SQLite connection from the pool.
+func (p *Pool) Take(ctx context.Context) (*sqlite.Conn, error) {
 	tick := time.NewTicker(5 * time.Second)
 	for ready := false; !ready; {
 		// Inform Pool.open to keep trying.
