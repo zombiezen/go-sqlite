@@ -130,15 +130,41 @@ func (p *Pool) Close() error {
 	return p.pool.Close()
 }
 
-// Get is an alias for Take
+// Get obtains an SQLite connection from the pool,
+// waiting until the initial migration is complete.
+// Get is identical to [Pool.Take].
+//
+// If no connection is available,
+// Get will block until at least one connection is returned with [Pool.Put],
+// or until either the Pool is closed or the context is canceled.
+// If no connection can be obtained
+// or an error occurs while preparing the connection,
+// an error is returned.
+//
+// The provided context is also used to control the execution lifetime of the connection.
+// See [sqlite.Conn.SetInterrupt] for details.
+//
+// Applications must ensure that all non-nil Conns returned from Get
+// are returned to the same Pool with [Pool.Put].
 func (p *Pool) Get(ctx context.Context) (*sqlite.Conn, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
 	return p.Take(ctx)
 }
 
-// Takes an SQLite connection from the pool.
+// Take obtains an SQLite connection from the pool,
+// waiting until the initial migration is complete.
+//
+// If no connection is available,
+// Take will block until at least one connection is returned with [Pool.Put],
+// or until either the Pool is closed or the context is canceled.
+// If no connection can be obtained
+// or an error occurs while preparing the connection,
+// an error is returned.
+//
+// The provided context is also used to control the execution lifetime of the connection.
+// See [sqlite.Conn.SetInterrupt] for details.
+//
+// Applications must ensure that all non-nil Conns returned from Take
+// are returned to the same Pool with [Pool.Put].
 func (p *Pool) Take(ctx context.Context) (*sqlite.Conn, error) {
 	tick := time.NewTicker(5 * time.Second)
 	for ready := false; !ready; {
