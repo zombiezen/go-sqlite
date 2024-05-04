@@ -882,69 +882,6 @@ func TestPool(t *testing.T) {
 			t.Error("Foreign keys were disabled after migration")
 		}
 	})
-
-	t.Run("CanStartMultiplePoolsConcurrently", func(t *testing.T) {
-		var wg sync.WaitGroup
-
-		dbPath := filepath.Join(t.TempDir(), "concurrent-pools.db")
-		schema := Schema{
-			AppID: 0xedbeef,
-			Migrations: []string{
-				`create table foo ( id integer primary key not null );`,
-			},
-		}
-
-		primaryPool := NewPool(dbPath, schema, Options{})
-		defer func() {
-			if err := primaryPool.Close(); err != nil {
-				t.Error("pool.Close:", err)
-			}
-		}()
-
-		// run some queries on primary pool
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-
-			for i := 0; i < 150; i++ {
-				conn, err := primaryPool.Get(ctx)
-				if err != nil {
-					t.Error("primary pool, get connection:", err)
-					break
-				}
-
-				if err := sqlitex.Execute(conn, "insert into foo values (?)", &sqlitex.ExecOptions{
-					Args: []any{i},
-				}); err != nil {
-					t.Error("insert query:", err)
-				}
-
-				primaryPool.Put(conn)
-			}
-		}()
-
-		// attempt to create other pools while primary pool handles connections
-		for i := 0; i < 5; i++ {
-			wg.Add(1)
-			go func(i int) {
-				defer wg.Done()
-				pool := NewPool(dbPath, schema, Options{})
-				defer func() {
-					if err := pool.Close(); err != nil {
-						t.Error("pool.Close:", err)
-					}
-				}()
-				conn, err := pool.Get(ctx)
-				if err != nil {
-					t.Error("concurrent pool, get connection:", err)
-				} else {
-					pool.Put(conn)
-				}
-			}(i)
-		}
-
-		wg.Wait()
-	})
 }
 
 func TestMigrate(t *testing.T) {
@@ -979,6 +916,64 @@ func TestMigrate(t *testing.T) {
 			t.Error(err)
 		} else if !afterMigration {
 			t.Error("Foreign keys were disabled after migration")
+		}
+	})
+
+	t.Run("Concurrent", func(t *testing.T) {
+		ctx := context.Background()
+		dbPath := filepath.Join(t.TempDir(), "concurrent.db")
+		schema := Schema{
+			AppID: 0xedbeef,
+			Migrations: []string{
+				`create table foo ( id integer primary key not null );`,
+			},
+		}
+
+		// Attempt to perform migrations while writing.
+		var wg sync.WaitGroup
+		defer wg.Wait()
+		const numConcurrent = 5
+		wg.Add(numConcurrent)
+		for i := 0; i < numConcurrent; i++ {
+			go func(i int) {
+				defer wg.Done()
+
+				conn, err := sqlite.OpenConn(dbPath)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				defer func() {
+					if err := conn.Close(); err != nil {
+						t.Error(err)
+					}
+				}()
+				if err := Migrate(ctx, conn, schema); err != nil {
+					t.Error("Migrate:", err)
+				}
+			}(i)
+		}
+
+		// Migrate and issue writes on one connection.
+		conn, err := sqlite.OpenConn(dbPath)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		defer func() {
+			if err := conn.Close(); err != nil {
+				t.Error(err)
+			}
+		}()
+		if err := Migrate(ctx, conn, schema); err != nil {
+			t.Error("Migrate:", err)
+		}
+		for i := 0; i < 150; i++ {
+			if err := sqlitex.Execute(conn, "insert into foo values (?)", &sqlitex.ExecOptions{
+				Args: []any{i},
+			}); err != nil {
+				t.Error("insert query:", err)
+			}
 		}
 	})
 }
