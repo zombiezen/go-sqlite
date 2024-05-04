@@ -957,8 +957,7 @@ func TestMigrate(t *testing.T) {
 		// Migrate and issue writes on one connection.
 		conn, err := sqlite.OpenConn(dbPath)
 		if err != nil {
-			t.Error(err)
-			return
+			t.Fatal(err)
 		}
 		defer func() {
 			if err := conn.Close(); err != nil {
@@ -966,7 +965,7 @@ func TestMigrate(t *testing.T) {
 			}
 		}()
 		if err := Migrate(ctx, conn, schema); err != nil {
-			t.Error("Migrate:", err)
+			t.Fatal("Migrate:", err)
 		}
 		for i := 0; i < 150; i++ {
 			if err := sqlitex.Execute(conn, "insert into foo values (?)", &sqlitex.ExecOptions{
