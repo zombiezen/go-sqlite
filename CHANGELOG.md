@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `sqlitemigration.Pool` now has a new method `Take`
+  so that it implements a common interface with `sqlitex.Pool`
+  ([#97](https://github.com/zombiezen/go-sqlite/pull/97)).
 - Documented `OpenWAL` behavior on `sqlite.OpenConn`.
 
 ### Fixed
