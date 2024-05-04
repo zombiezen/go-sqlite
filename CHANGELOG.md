@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+### Added
+
+- Documented `OpenWAL` behavior on `sqlite.OpenConn`.
+
 ### Fixed
 
 - Address low-frequency errors with concurrent use of `sqlitemigration`

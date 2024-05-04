@@ -65,6 +65,15 @@ const ptrSize = types.Size_t(unsafe.Sizeof(uintptr(0)))
 //   - [OpenWAL]
 //   - [OpenURI]
 //
+// The OpenWAL flag is an extension specific to this library:
+// it runs "PRAGMA journal_mode=wal;" before returning.
+// While convenient, this constitutes a write transaction
+// and may fail if the database is contended.
+// A default timeout of a few seconds is used
+// so that OpenConn does not block indefinitely.
+// If you want to have more control over the timeout on setting WAL,
+// do not pass OpenWAL and execute "PRAGMA journal_mode=wal;" yourself.
+//
 // https://www.sqlite.org/c3ref/open.html
 func OpenConn(path string, flags ...OpenFlags) (*Conn, error) {
 	var openFlags OpenFlags
@@ -115,7 +124,6 @@ func OpenConn(path string, flags ...OpenFlags) (*Conn, error) {
 	if openFlags&OpenWAL != 0 {
 		// Set timeout for enabling WAL.
 		// See https://github.com/crawshaw/sqlite/pull/113 for details.
-		// TODO(maybe): Pass in Context to OpenConn?
 		c.SetBusyTimeout(10 * time.Second)
 
 		stmt, _, err := c.PrepareTransient("PRAGMA journal_mode=wal;")
