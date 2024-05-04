@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Address low-frequency errors with concurrent use of `sqlitemigration`
+  ([#99](https://github.com/zombiezen/go-sqlite/issues/99)).
 - The error returned from `sqlitex.NewPool`
   when trying to open an in-memory database
   now gives correct advice

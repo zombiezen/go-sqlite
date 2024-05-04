@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -915,6 +916,63 @@ func TestMigrate(t *testing.T) {
 			t.Error(err)
 		} else if !afterMigration {
 			t.Error("Foreign keys were disabled after migration")
+		}
+	})
+
+	t.Run("Concurrent", func(t *testing.T) {
+		ctx := context.Background()
+		dbPath := filepath.Join(t.TempDir(), "concurrent.db")
+		schema := Schema{
+			AppID: 0xedbeef,
+			Migrations: []string{
+				`create table foo ( id integer primary key not null );`,
+			},
+		}
+
+		// Attempt to perform migrations while writing.
+		var wg sync.WaitGroup
+		defer wg.Wait()
+		const numConcurrent = 5
+		wg.Add(numConcurrent)
+		for i := 0; i < numConcurrent; i++ {
+			go func(i int) {
+				defer wg.Done()
+
+				conn, err := sqlite.OpenConn(dbPath, sqlite.OpenReadWrite, sqlite.OpenCreate)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				defer func() {
+					if err := conn.Close(); err != nil {
+						t.Error(err)
+					}
+				}()
+				if err := Migrate(ctx, conn, schema); err != nil {
+					t.Error("Migrate:", err)
+				}
+			}(i)
+		}
+
+		// Migrate and issue writes on one connection.
+		conn, err := sqlite.OpenConn(dbPath, sqlite.OpenReadWrite, sqlite.OpenCreate)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			if err := conn.Close(); err != nil {
+				t.Error(err)
+			}
+		}()
+		if err := Migrate(ctx, conn, schema); err != nil {
+			t.Fatal("Migrate:", err)
+		}
+		for i := 0; i < 150; i++ {
+			if err := sqlitex.Execute(conn, "insert into foo values (?)", &sqlitex.ExecOptions{
+				Args: []any{i},
+			}); err != nil {
+				t.Error("insert query:", err)
+			}
 		}
 	})
 }
