@@ -938,7 +938,7 @@ func TestMigrate(t *testing.T) {
 			go func(i int) {
 				defer wg.Done()
 
-				conn, err := sqlite.OpenConn(dbPath)
+				conn, err := sqlite.OpenConn(dbPath, sqlite.OpenReadWrite, sqlite.OpenCreate)
 				if err != nil {
 					t.Error(err)
 					return
@@ -955,7 +955,7 @@ func TestMigrate(t *testing.T) {
 		}
 
 		// Migrate and issue writes on one connection.
-		conn, err := sqlite.OpenConn(dbPath)
+		conn, err := sqlite.OpenConn(dbPath, sqlite.OpenReadWrite, sqlite.OpenCreate)
 		if err != nil {
 			t.Fatal(err)
 		}
