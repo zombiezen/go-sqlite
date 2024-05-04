@@ -387,7 +387,19 @@ func rollback(conn *sqlite.Conn) {
 }
 
 func ensureAppID(conn *sqlite.Conn, wantAppID int32) (schemaVersion int32, err error) {
-	defer sqlitex.Save(conn)(&err)
+	// This transaction will later be upgraded to a write transaction. If at the point of upgrading
+	// to a write transaction, the database is locked, SQLite will fail immediately with
+	// SQLITE_BUSY and the busy timeout will have no effect, causing the pool to fail.
+	//
+	// If we use an immediate transaction, telling SQLite this is a write transaction, SQLite
+	// will attempt to lock the database immediately. If a lock cannot be acquired, the busy
+	// timeout is used allowing the transaction to wait until it can get a lock, thus allowing the
+	// pool to start successfully.
+	end, err := sqlitex.ImmediateTransaction(conn)
+	if err != nil {
+		return 0, err
+	}
+	defer end(&err)
 
 	var hasSchema bool
 	err = sqlitex.ExecuteTransient(conn, "VALUES ((SELECT COUNT(*) FROM sqlite_master) > 0);", &sqlitex.ExecOptions{
