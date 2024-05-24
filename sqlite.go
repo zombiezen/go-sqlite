@@ -212,6 +212,9 @@ func (c *Conn) Close() error {
 	if c == nil {
 		return fmt.Errorf("sqlite: close: nil connection")
 	}
+	if c.closed {
+		return fmt.Errorf("sqlite: close: already closed")
+	}
 	c.cancelInterrupt()
 	c.closed = true
 	for _, stmt := range c.stmts {

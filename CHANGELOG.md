@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 [Unreleased]: https://github.com/zombiezen/go-sqlite/compare/v1.3.0...main
 
+## [Unreleased][]
+
+### Changed
+
+- `Conn.Close` returns an error if the connection has already been closed
+  ([#101](https://github.com/zombiezen/go-sqlite/issues/101)).
+
 ## [1.3.0][] - 2024-05-04
 
 Version 1.3 is largely a bug-fix release,
