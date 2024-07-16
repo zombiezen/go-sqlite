@@ -1,4 +1,4 @@
-// Copyright 2023 Ross Light
+// Copyright 2023 Roxy Light
 // SPDX-License-Identifier: ISC
 
 // Package generateseries provides a port of the [generate_series] table-valued function

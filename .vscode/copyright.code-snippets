@@ -2,7 +2,7 @@
 	"Copyright": {
 		"prefix": "copyright",
 		"body": [
-			"$LINE_COMMENT Copyright $CURRENT_YEAR Ross Light",
+			"$LINE_COMMENT Copyright $CURRENT_YEAR Roxy Light",
 			"$LINE_COMMENT SPDX-License-Identifier: ISC",
 		],
 		"description": "Copyright header"
