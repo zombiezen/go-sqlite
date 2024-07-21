@@ -243,6 +243,57 @@ func ExecuteTransientFS(conn *sqlite.Conn, fsys fs.FS, filename string, opts *Ex
 	return nil
 }
 
+// SingleRow is [Execute], but it returns an error if there is not exactly one result returned.
+func SingleRow(conn *sqlite.Conn, query string, opts *ExecOptions) error {
+	opts, ranOnce := onceWrap(opts)
+	err := Execute(conn, query, opts)
+	if err != nil {
+		return err
+	}
+	if !ranOnce() {
+		return errNoResults
+	}
+	return nil
+}
+
+// SingleRowFS is [ExecuteFS], but but it returns an error if there is not exactly one result returned.
+func SingleRowFS(conn *sqlite.Conn, fsys fs.FS, filename string, opts *ExecOptions) error {
+	opts, ranOnce := onceWrap(opts)
+	err := ExecuteFS(conn, fsys, filename, opts)
+	if err != nil {
+		return err
+	}
+	if !ranOnce() {
+		return errNoResults
+	}
+	return nil
+}
+
+// onceWrap wraps the ResultFunc of an [*ExecOptions] in a closure that returns
+// errMultipleResults if it is run more than once.
+// If no ResultFunc is set, a no-op handler is used.
+// It returns the modified options along with a closure that can be called to
+// check if ResultFunc was run, allowing the caller to return errNoResults if it
+// was never called.
+func onceWrap(opts *ExecOptions) (*ExecOptions, func() bool) {
+	if opts == nil {
+		opts = &ExecOptions{}
+	}
+	if opts.ResultFunc == nil {
+		opts.ResultFunc = func(*sqlite.Stmt) error { return nil }
+	}
+	called := false
+	rf := opts.ResultFunc
+	opts.ResultFunc = func(stmt *sqlite.Stmt) error {
+		if called {
+			return errMultipleResults
+		}
+		called = true
+		return rf(stmt)
+	}
+	return opts, func() bool { return called }
+}
+
 // PrepareTransientFS prepares an SQL statement from a file
 // that is not cached by the Conn.
 // Subsequent calls with the same query will create new Stmts.

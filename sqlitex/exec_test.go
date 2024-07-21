@@ -18,6 +18,7 @@
 package sqlitex
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"testing"
@@ -341,6 +342,76 @@ INSERT INTO t (a, b) VALUES ('a2', :a2);
 		t.Log(err)
 		if got, want := sqlite.ErrCode(err), sqlite.ResultError; got != want {
 			t.Errorf("code = %v; want %v", got, want)
+		}
+	})
+}
+
+func TestSingleRow(t *testing.T) {
+	conn, err := sqlite.OpenConn(":memory:", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	script := `
+CREATE TABLE t (a TEXT, b INTEGER);
+INSERT INTO t (a, b) VALUES ('a1', 1);
+INSERT INTO t (a, b) VALUES ('a2', 1);
+`
+	err = ExecuteScript(conn, script, &ExecOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("NoResults", func(t *testing.T) {
+		aVal := ""
+		got := SingleRow(conn, `SELECT a FROM t WHERE b==?`, &ExecOptions{
+			Args: []any{0},
+			ResultFunc: func(stmt *sqlite.Stmt) error {
+				aVal = stmt.ColumnText(0)
+				return nil
+			},
+		})
+		if !errors.Is(got, errNoResults) {
+			t.Errorf("err = %v; want %v", got, errNoResults)
+		}
+		if aVal != "" {
+			t.Errorf(`aVal = %q; want ""`, aVal)
+		}
+	})
+
+	t.Run("MultipleResults", func(t *testing.T) {
+		aVal := ""
+		got := SingleRow(conn, `SELECT a FROM t WHERE b==?`, &ExecOptions{
+			Args: []any{1},
+			ResultFunc: func(stmt *sqlite.Stmt) error {
+				t.Logf("setting aval to %s", stmt.ColumnText(0))
+				aVal = stmt.ColumnText(0)
+				return nil
+			},
+		})
+		if !errors.Is(got, errMultipleResults) {
+			t.Errorf("err = %v; want %v", got, errMultipleResults)
+		}
+		if aVal != "a1" {
+			t.Errorf(`aVal = %q; want "a1"`, aVal)
+		}
+	})
+
+	t.Run("SingleResult", func(t *testing.T) {
+		bVal := 0
+		got := SingleRow(conn, `SELECT b FROM t WHERE a==?`, &ExecOptions{
+			Args: []any{"a1"},
+			ResultFunc: func(stmt *sqlite.Stmt) error {
+				bVal = stmt.ColumnInt(0)
+				return nil
+			},
+		})
+		if got != nil {
+			t.Errorf("err = %v; want nil", got)
+		}
+		if bVal != 1 {
+			t.Errorf(`bVal = %d; want 1`, bVal)
 		}
 	})
 }
