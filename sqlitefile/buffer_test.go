@@ -1,5 +1,5 @@
 // Copyright (c) 2018 David Crawshaw <david@zentus.com>
-// Copyright (c) 2021 Ross Light <ross@zombiezen.com>
+// Copyright (c) 2021 Roxy Light <roxy@zombiezen.com>
 //
 // Permission to use, copy, modify, and distribute this software for any
 // purpose with or without fee is hereby granted, provided that the above
@@ -114,13 +114,17 @@ func TestConcurrentBuffer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	conn1 := dbpool.Get(context.Background())
-	conn2 := dbpool.Get(context.Background())
-	defer func() {
-		dbpool.Put(conn1)
-		dbpool.Put(conn2)
-		dbpool.Close()
-	}()
+	defer dbpool.Close()
+	conn1, err := dbpool.Take(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dbpool.Put(conn1)
+	conn2, err := dbpool.Take(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dbpool.Put(conn2)
 
 	b1a, err := NewBuffer(conn1)
 	if err != nil {

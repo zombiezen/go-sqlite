@@ -1,5 +1,5 @@
 // Copyright (c) 2018 David Crawshaw <david@zentus.com>
-// Copyright (c) 2021 Ross Light <rosss@zombiezen.com>
+// Copyright (c) 2021 Roxy Light <roxy@zombiezen.com>
 //
 // Permission to use, copy, modify, and distribute this software for any
 // purpose with or without fee is hereby granted, provided that the above
@@ -57,6 +57,55 @@ func TestExec(t *testing.T) {
 	}
 	if want := []int64{1, 2}; !reflect.DeepEqual(b, want) {
 		t.Errorf("b=%v, want %v", b, want)
+	}
+}
+
+func TestExecNil(t *testing.T) {
+	err := Execute(nil, `SELECT 1;`, &ExecOptions{
+		ResultFunc: func(stmt *sqlite.Stmt) error {
+			t.Error("ResultFunc called")
+			return nil
+		},
+	})
+	if err == nil {
+		t.Error("No error returned")
+	} else {
+		t.Log("Execute message:", err)
+	}
+
+	err = ExecuteTransient(nil, `SELECT 1;`, &ExecOptions{
+		ResultFunc: func(stmt *sqlite.Stmt) error {
+			t.Error("ResultFunc called")
+			return nil
+		},
+	})
+	if err == nil {
+		t.Error("No error returned")
+	} else {
+		t.Log("ExecuteTransient message:", err)
+	}
+}
+
+func TestExecBadSyntax(t *testing.T) {
+	conn, err := sqlite.OpenConn(":memory:", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	err = ExecuteTransient(conn, " \nSELECT );", &ExecOptions{
+		ResultFunc: func(stmt *sqlite.Stmt) error {
+			t.Error("ResultFunc called")
+			return nil
+		},
+	})
+	if err == nil {
+		t.Fatal("No error returned")
+	}
+	t.Log("Message:", err)
+	got, ok := sqlite.ErrorOffset(err)
+	if want := 9; got != want || ok == false {
+		t.Errorf("sqlite.ErrorOffset(err) = %d, %t; want %d, true", got, ok, want)
 	}
 }
 

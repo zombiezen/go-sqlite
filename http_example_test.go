@@ -1,4 +1,4 @@
-// Copyright 2021 Ross Light
+// Copyright 2021 Roxy Light
 // SPDX-License-Identifier: ISC
 
 package sqlite_test
@@ -27,11 +27,13 @@ func Example_http() {
 }
 
 func handle(w http.ResponseWriter, r *http.Request) {
-	conn := dbpool.Get(r.Context())
-	if conn == nil {
+	conn, err := dbpool.Take(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
 	defer dbpool.Put(conn)
+
 	stmt := conn.Prep("SELECT foo FROM footable WHERE id = $id;")
 	stmt.SetText("$id", "_user_id_")
 	for {

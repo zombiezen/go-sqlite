@@ -1,5 +1,5 @@
 // Copyright (c) 2018 David Crawshaw <david@zentus.com>
-// Copyright (c) 2021 Ross Light <rosss@zombiezen.com>
+// Copyright (c) 2021 Roxy Light <roxy@zombiezen.com>
 //
 // Permission to use, copy, modify, and distribute this software for any
 // purpose with or without fee is hereby granted, provided that the above
@@ -70,7 +70,7 @@ func Open(uri string, flags sqlite.OpenFlags, poolSize int) (pool *Pool, err err
 // NewPool opens a fixed-size pool of SQLite connections.
 func NewPool(uri string, opts PoolOptions) (pool *Pool, err error) {
 	if uri == ":memory:" {
-		return nil, strerror{msg: `sqlite: ":memory:" does not work with multiple connections, use "file::memory:?mode=memory"`}
+		return nil, strerror{msg: `sqlite: ":memory:" does not work with multiple connections, use "file::memory:?mode=memory&cache=shared"`}
 	}
 
 	poolSize := opts.PoolSize
@@ -117,23 +117,31 @@ func NewPool(uri string, opts PoolOptions) (pool *Pool, err error) {
 
 // Get returns an SQLite connection from the Pool.
 //
-// If no connection is available,
-// Get will block until at least one connection is returned with [Pool.Put],
-// or until either the Pool is closed or the context is canceled.
-// If no connection can be obtained, nil is returned.
-//
-// The provided context is also used to control the execution lifetime of the connection.
-// See [sqlite.Conn.SetInterrupt] for details.
-//
-// Applications must ensure that all non-nil Conns returned from Get
-// are returned to the same Pool with [Pool.Put].
-//
-// Although ctx historically may be nil,
-// this is not a recommended design pattern.
+// Deprecated: Use [Pool.Take] instead.
+// Get is an alias for backward compatibility.
 func (p *Pool) Get(ctx context.Context) *sqlite.Conn {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	conn, _ := p.Take(ctx)
+	return conn
+}
+
+// Take returns an SQLite connection from the Pool.
+//
+// If no connection is available,
+// Take will block until at least one connection is returned with [Pool.Put],
+// or until either the Pool is closed or the context is canceled.
+// If no connection can be obtained
+// or an error occurs while preparing the connection,
+// an error is returned.
+//
+// The provided context is also used to control the execution lifetime of the connection.
+// See [sqlite.Conn.SetInterrupt] for details.
+//
+// Applications must ensure that all non-nil Conns returned from Take
+// are returned to the same Pool with [Pool.Put].
+func (p *Pool) Take(ctx context.Context) (*sqlite.Conn, error) {
 	select {
 	case conn := <-p.free:
 		ctx, cancel := context.WithCancel(ctx)
@@ -150,7 +158,7 @@ func (p *Pool) Get(ctx context.Context) *sqlite.Conn {
 		if !inited {
 			if err := p.prepare(conn); err != nil {
 				p.put(conn)
-				return nil
+				return nil, fmt.Errorf("get sqlite connection: %w", err)
 			}
 
 			p.mu.Lock()
@@ -161,11 +169,12 @@ func (p *Pool) Get(ctx context.Context) *sqlite.Conn {
 			p.mu.Unlock()
 		}
 
-		return conn
+		return conn, nil
 	case <-ctx.Done():
+		return nil, fmt.Errorf("get sqlite connection: %w", ctx.Err())
 	case <-p.closed:
+		return nil, fmt.Errorf("get sqlite connection: pool closed")
 	}
-	return nil
 }
 
 // Put puts an SQLite connection back into the Pool.

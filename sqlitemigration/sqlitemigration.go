@@ -1,4 +1,4 @@
-// Copyright 2021 Ross Light
+// Copyright 2021 Roxy Light
 // SPDX-License-Identifier: ISC
 
 // Package sqlitemigration provides a connection pool type that guarantees a
@@ -81,9 +81,6 @@ type Pool struct {
 	opts   Options
 	cancel context.CancelFunc
 
-	initedMu sync.RWMutex // protects inited
-	inited   map[*sqlite.Conn]struct{}
-
 	ready <-chan struct{} // protects the following fields
 	pool  *sqlitex.Pool
 	err   error
@@ -102,9 +99,6 @@ func NewPool(uri string, schema Schema, opts Options) *Pool {
 		opts:   opts,
 		cancel: cancel,
 		ready:  ready,
-	}
-	if opts.PrepareConn != nil {
-		p.inited = make(map[*sqlite.Conn]struct{})
 	}
 	go func() {
 		defer close(ready)
@@ -136,8 +130,42 @@ func (p *Pool) Close() error {
 	return p.pool.Close()
 }
 
-// Get gets an SQLite connection from the pool.
+// Get obtains an SQLite connection from the pool,
+// waiting until the initial migration is complete.
+// Get is identical to [Pool.Take].
+//
+// If no connection is available,
+// Get will block until at least one connection is returned with [Pool.Put],
+// or until either the Pool is closed or the context is canceled.
+// If no connection can be obtained
+// or an error occurs while preparing the connection,
+// an error is returned.
+//
+// The provided context is also used to control the execution lifetime of the connection.
+// See [sqlite.Conn.SetInterrupt] for details.
+//
+// Applications must ensure that all non-nil Conns returned from Get
+// are returned to the same Pool with [Pool.Put].
 func (p *Pool) Get(ctx context.Context) (*sqlite.Conn, error) {
+	return p.Take(ctx)
+}
+
+// Take obtains an SQLite connection from the pool,
+// waiting until the initial migration is complete.
+//
+// If no connection is available,
+// Take will block until at least one connection is returned with [Pool.Put],
+// or until either the Pool is closed or the context is canceled.
+// If no connection can be obtained
+// or an error occurs while preparing the connection,
+// an error is returned.
+//
+// The provided context is also used to control the execution lifetime of the connection.
+// See [sqlite.Conn.SetInterrupt] for details.
+//
+// Applications must ensure that all non-nil Conns returned from Take
+// are returned to the same Pool with [Pool.Put].
+func (p *Pool) Take(ctx context.Context) (*sqlite.Conn, error) {
 	tick := time.NewTicker(5 * time.Second)
 	for ready := false; !ready; {
 		// Inform Pool.open to keep trying.
@@ -153,47 +181,19 @@ func (p *Pool) Get(ctx context.Context) (*sqlite.Conn, error) {
 			ready = true
 		case <-ctx.Done():
 			tick.Stop()
-			return nil, fmt.Errorf("get sqlite conn: %w", ctx.Err())
+			return nil, fmt.Errorf("get sqlite connection: %w", ctx.Err())
 		}
 	}
 	tick.Stop()
 
 	if p.err != nil {
-		return nil, fmt.Errorf("get sqlite conn: %w", p.err)
+		return nil, fmt.Errorf("get sqlite connection: %w", p.err)
 	}
-	conn := p.pool.Get(ctx)
-	if conn == nil {
-		if err := ctx.Err(); err != nil {
-			return nil, fmt.Errorf("get sqlite conn: %w", err)
-		}
-		return nil, errors.New("get sqlite conn: pool closed")
-	}
-	if err := p.prepare(conn); err != nil {
-		p.pool.Put(conn)
-		return nil, fmt.Errorf("get sqlite conn: %w", err)
+	conn, err := p.pool.Take(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get sqlite connection: %w", err)
 	}
 	return conn, nil
-}
-
-func (p *Pool) prepare(conn *sqlite.Conn) error {
-	if p.opts.PrepareConn == nil {
-		return nil
-	}
-	p.initedMu.RLock()
-	_, inited := p.inited[conn]
-	p.initedMu.RUnlock()
-	if inited {
-		return nil
-	}
-	if err := p.opts.PrepareConn(conn); err != nil {
-		return fmt.Errorf("prepare connection: %w", err)
-	}
-	// This will not race, since other goroutines will not be able to acquire the
-	// connection from the pool.
-	p.initedMu.Lock()
-	p.inited[conn] = struct{}{}
-	p.initedMu.Unlock()
-	return nil
 }
 
 // Put puts an SQLite connection back into the pool.
@@ -242,26 +242,27 @@ func (p *Pool) open(ctx context.Context, uri string, schema Schema) (*sqlitex.Po
 		}
 
 		pool, err := sqlitex.NewPool(uri, sqlitex.PoolOptions{
-			Flags:    p.opts.Flags,
-			PoolSize: p.opts.PoolSize,
+			Flags:       p.opts.Flags,
+			PoolSize:    p.opts.PoolSize,
+			PrepareConn: p.opts.PrepareConn,
 		})
 		if err != nil {
 			p.opts.OnError.call(err)
 			continue
 		}
-		conn := pool.Get(ctx)
-		if conn == nil {
-			// Canceled.
+
+		conn, err := pool.Take(ctx)
+		if isDone(err) {
 			pool.Close()
 			return nil, errors.New("closed before successful migration")
 		}
-		if err := p.prepare(conn); err != nil {
-			pool.Put(conn)
+		if err != nil {
 			if closeErr := pool.Close(); closeErr != nil {
 				p.opts.OnError.call(fmt.Errorf("close after failed connection preparation: %w", closeErr))
 			}
 			return nil, err
 		}
+
 		err = migrateDB(ctx, conn, schema, p.opts.OnStartMigrate)
 		pool.Put(conn)
 		if err != nil {
@@ -386,7 +387,19 @@ func rollback(conn *sqlite.Conn) {
 }
 
 func ensureAppID(conn *sqlite.Conn, wantAppID int32) (schemaVersion int32, err error) {
-	defer sqlitex.Save(conn)(&err)
+	// This transaction will later be upgraded to a write transaction. If at the point of upgrading
+	// to a write transaction, the database is locked, SQLite will fail immediately with
+	// SQLITE_BUSY and the busy timeout will have no effect, causing the pool to fail.
+	//
+	// If we use an immediate transaction, telling SQLite this is a write transaction, SQLite
+	// will attempt to lock the database immediately. If a lock cannot be acquired, the busy
+	// timeout is used allowing the transaction to wait until it can get a lock, thus allowing the
+	// pool to start successfully.
+	end, err := sqlitex.ImmediateTransaction(conn)
+	if err != nil {
+		return 0, err
+	}
+	defer end(&err)
 
 	var hasSchema bool
 	err = sqlitex.ExecuteTransient(conn, "VALUES ((SELECT COUNT(*) FROM sqlite_master) > 0);", &sqlitex.ExecOptions{
@@ -461,4 +474,10 @@ func stepAndReset(stmt *sqlite.Stmt) error {
 		return err
 	}
 	return stmt.Reset()
+}
+
+// isDone reports whether an error indicates cancellation or deadline exceeded
+// from a [context.Context]
+func isDone(err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }

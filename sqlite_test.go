@@ -1,5 +1,5 @@
 // Copyright (c) 2018 David Crawshaw <david@zentus.com>
-// Copyright (c) 2021 Ross Light <ross@zombiezen.com>
+// Copyright (c) 2021 Roxy Light <roxy@zombiezen.com>
 //
 // Permission to use, copy, modify, and distribute this software for any
 // purpose with or without fee is hereby granted, provided that the above
@@ -527,35 +527,30 @@ func TestExtendedCodes(t *testing.T) {
 	}
 }
 
-type errWithMessage struct {
-	err error
-	msg string
+func TestSyntaxError(t *testing.T) {
+	conn, err := sqlite.OpenConn(":memory:", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	stmt, _, err := conn.PrepareTransient(" \nSELECT );")
+	if err == nil {
+		stmt.Finalize()
+		t.Fatal("No error returned")
+	}
+
+	msg := err.Error()
+	t.Log("Message:", msg)
+	if want := "2:8"; !strings.Contains(msg, want) {
+		t.Errorf("err.Error() = %q; want to contain %q", msg, want)
+	}
+
+	got, ok := sqlite.ErrorOffset(err)
+	if want := 9; got != want || ok == false {
+		t.Errorf("ErrorOffset(err) = %d, %t; want %d, true", got, ok, want)
+	}
 }
-
-func (e errWithMessage) Cause() error {
-	return e.err
-}
-
-func (e errWithMessage) Error() string {
-	return e.msg + ": " + e.err.Error()
-}
-
-// TODO(maybe)
-// func TestWrappedErrors(t *testing.T) {
-// 	rawErr := sqlite.Error{
-// 		Code:  sqlite.SQLITE_INTERRUPT,
-// 		Loc:   "chao",
-// 		Query: "SELECT * FROM thieves",
-// 	}
-// 	if got, want := sqlite.ErrCode(rawErr), sqlite.SQLITE_INTERRUPT; got != want {
-// 		t.Errorf("got err=%s, want %s", got, want)
-// 	}
-
-// 	wrappedErr := errWithMessage{err: rawErr, msg: "Doing something"}
-// 	if got, want := sqlite.ErrCode(wrappedErr), sqlite.SQLITE_INTERRUPT; got != want {
-// 		t.Errorf("got err=%s, want %s", got, want)
-// 	}
-// }
 
 func TestJournalMode(t *testing.T) {
 	dir, err := os.MkdirTemp("", "crawshaw.io")

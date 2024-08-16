@@ -1,4 +1,4 @@
-// Copyright 2021 Ross Light
+// Copyright 2021 Roxy Light
 // SPDX-License-Identifier: ISC
 
 package sqlitex_test
@@ -71,8 +71,8 @@ func ExamplePool() {
 
 	// While handling a request:
 	ctx := context.TODO()
-	conn := dbpool.Get(ctx)
-	if conn == nil {
+	conn, err := dbpool.Take(ctx)
+	if err != nil {
 		// handle err
 	}
 	defer dbpool.Put(conn)

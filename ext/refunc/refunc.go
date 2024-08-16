@@ -1,4 +1,4 @@
-// Copyright 2023 Ross Light
+// Copyright 2023 Roxy Light
 // SPDX-License-Identifier: ISC
 
 // Package refunc provides an implementation of the [REGEXP operator]

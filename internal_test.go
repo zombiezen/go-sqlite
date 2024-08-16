@@ -1,4 +1,4 @@
-// Copyright 2024 Ross Light
+// Copyright 2024 Roxy Light
 // SPDX-License-Identifier: ISC
 
 package sqlite
