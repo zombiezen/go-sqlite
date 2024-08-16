@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+### Added
+
+- New function `sqlitex.ResultBytes`.
+  ([#86](https://github.com/zombiezen/go-sqlite/pull/86))
+
 ### Changed
 
 - `Conn.Close` returns an error if the connection has already been closed
