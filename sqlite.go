@@ -206,6 +206,27 @@ func openConn(path string, openFlags OpenFlags) (_ *Conn, err error) {
 	return c, nil
 }
 
+// FinalizeCachedStmts finalizes all persistent prepared statements in the Conn.
+func (c *Conn) FinalizeCachedStmts() error {
+	if c == nil {
+		return fmt.Errorf("sqlite: finalize: nil connection")
+	}
+	if c.closed {
+		return fmt.Errorf("sqlite: finalize: already closed")
+	}
+	return c.finalizeCachedStmts()
+}
+
+func (c *Conn) finalizeCachedStmts() error {
+	for _, stmt := range c.stmts {
+		if err := stmt.Finalize(); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // Close closes the database connection using sqlite3_close and finalizes
 // persistent prepared statements. https://www.sqlite.org/c3ref/close.html
 func (c *Conn) Close() error {
@@ -217,8 +238,9 @@ func (c *Conn) Close() error {
 	}
 	c.cancelInterrupt()
 	c.closed = true
-	for _, stmt := range c.stmts {
-		stmt.Finalize()
+	err := c.finalizeCachedStmts()
+	if err != nil {
+		return fmt.Errorf("sqlite: close: %w", err)
 	}
 	res := ResultCode(lib.Xsqlite3_close(c.tls, c.conn))
 	libc.Xfree(c.tls, c.unlockNote)

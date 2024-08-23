@@ -981,6 +981,42 @@ CREATE TABLE track(
 	}
 }
 
+func TestFinalizeCachedStmts(t *testing.T) {
+	pool, err := sqlitex.NewPool("file::memory:?mode=memory&cache=shared", sqlitex.PoolOptions{
+		PoolSize: 1,
+		PrepareConn: func(conn *sqlite.Conn) error {
+			err := sqlitex.ExecuteTransient(conn, `CREATE TABLE table1 (id INTEGER);`, nil)
+			if err != nil {
+				return err
+			}
+
+			return sqlitex.ExecuteTransient(conn, `INSERT INTO table1 VALUES (1);`, nil)
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Cleanup(func() {
+		pool.Close()
+	})
+
+	conn, err := pool.Take(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Put(conn)
+
+	stmt := conn.Prep("SELECT * FROM table1;")
+
+	stmt.Step()
+
+	err = conn.FinalizeCachedStmts()
+	if err != nil {
+		t.Errorf("Failed to finalize cached statements: %v", err)
+	}
+}
+
 func TestMain(m *testing.M) {
 	_ = libc.Environ() // Forces libc.SetEnviron; fixes memory accounting balance for environ(7).
 	libc.MemAuditStart()
