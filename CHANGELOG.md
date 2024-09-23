@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `Conn.Close` returns an error if the connection has already been closed
   ([#101](https://github.com/zombiezen/go-sqlite/issues/101)).
+- The minimum `modernc.org/sqlite` version updated to 1.33.1.
 
 ### Fixed
 
