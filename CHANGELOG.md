@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Conn.Close` returns an error if the connection has already been closed
   ([#101](https://github.com/zombiezen/go-sqlite/issues/101)).
 
+### Fixed
+
+- `sqlite3_initialize` is now called from any top-level function
+  to prevent race conditions during initialization.
+  ([#18](https://github.com/zombiezen/go-sqlite/issues/18)).
+
 ## [1.3.0][] - 2024-05-04
 
 Version 1.3 is largely a bug-fix release,

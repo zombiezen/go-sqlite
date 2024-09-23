@@ -308,6 +308,7 @@ func (c *Conn) ApplyInverseChangeset(r io.Reader, filterFn func(tableName string
 func InvertChangeset(w io.Writer, r io.Reader) error {
 	tls := libc.NewTLS()
 	defer tls.Close()
+	initlib(tls)
 	xInput, pIn := registerStreamReader(r)
 	defer unregisterStreamReader(pIn)
 	xOutput, pOut := registerStreamWriter(w)
@@ -334,6 +335,7 @@ type ChangesetIterator struct {
 // https://www.sqlite.org/session/sqlite3changeset_start.html
 func NewChangesetIterator(r io.Reader) (*ChangesetIterator, error) {
 	tls := libc.NewTLS()
+	initlib(tls)
 	xInput, pIn := registerStreamReader(r)
 	pp, err := malloc(tls, ptrSize)
 	if err != nil {
@@ -572,6 +574,7 @@ func (iter *ChangesetIterator) PrimaryKey() ([]bool, error) {
 func ConcatChangesets(w io.Writer, changeset1, changeset2 io.Reader) error {
 	tls := libc.NewTLS()
 	defer tls.Close()
+	initlib(tls)
 	xInput1, pIn1 := registerStreamReader(changeset1)
 	defer unregisterStreamReader(pIn1)
 	xInput2, pIn2 := registerStreamReader(changeset2)
@@ -621,6 +624,7 @@ func (cg *Changegroup) init() error {
 			return fmt.Errorf("init changegroup: %v", err)
 		}
 		defer libc.Xfree(cg.tls, pp)
+		initlib(cg.tls)
 		res := ResultCode(lib.Xsqlite3changegroup_new(cg.tls, pp))
 		if err := res.ToError(); err != nil {
 			cg.tls.Close()

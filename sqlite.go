@@ -39,6 +39,14 @@ const Version = lib.SQLITE_VERSION
 // is the release number.
 const VersionNumber = lib.SQLITE_VERSION_NUMBER
 
+var initOnce sync.Once
+
+func initlib(tls *libc.TLS) {
+	initOnce.Do(func() {
+		lib.Xsqlite3_initialize(tls)
+	})
+}
+
 // Conn is an open connection to an SQLite3 database.
 //
 // A Conn can only be used by one goroutine at a time.
@@ -155,6 +163,7 @@ func openConn(path string, openFlags OpenFlags) (_ *Conn, err error) {
 			tls.Close()
 		}
 	}()
+	initlib(tls)
 	unlockNote, err := allocUnlockNote(tls)
 	if err != nil {
 		return nil, fmt.Errorf("sqlite: open %q: %w", path, err)
