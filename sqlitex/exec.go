@@ -307,10 +307,32 @@ func exec(stmt *sqlite.Stmt, flags uint8, opts *ExecOptions) (err error) {
 
 func setArg(stmt *sqlite.Stmt, i int, v any) {
 	switch value := v.(type) {
-	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, uintptr:
-		stmt.BindInt64(i, value.(int64))
-	case float32, float64:
-		stmt.BindFloat(i, value.(float64))
+	case int:
+		stmt.BindInt64(i, int64(value))
+	case int8:
+		stmt.BindInt64(i, int64(value))
+	case int16:
+		stmt.BindInt64(i, int64(value))
+	case int32:
+		stmt.BindInt64(i, int64(value))
+	case int64:
+		stmt.BindInt64(i, value)
+	case uint:
+		stmt.BindInt64(i, int64(value))
+	case uint8:
+		stmt.BindInt64(i, int64(value))
+	case uint16:
+		stmt.BindInt64(i, int64(value))
+	case uint32:
+		stmt.BindInt64(i, int64(value))
+	case uint64:
+		stmt.BindInt64(i, int64(value))
+	case uintptr:
+		stmt.BindInt64(i, int64(value))
+	case float64:
+		stmt.BindFloat(i, value)
+	case float32:
+		stmt.BindFloat(i, float64(value))
 	case string:
 		stmt.BindText(i, value)
 	case bool:
