@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"reflect"
 	"strings"
 
 	"zombiezen.com/go/sqlite"
@@ -275,7 +274,7 @@ func exec(stmt *sqlite.Stmt, flags uint8, opts *ExecOptions) (err error) {
 		}
 		for i, arg := range opts.Args {
 			provided.set(i)
-			setArg(stmt, i+1, reflect.ValueOf(arg))
+			setArg(stmt, i+1, arg)
 		}
 		if err := setNamed(stmt, provided, flags, opts.Named); err != nil {
 			return err
@@ -306,26 +305,20 @@ func exec(stmt *sqlite.Stmt, flags uint8, opts *ExecOptions) (err error) {
 	return nil
 }
 
-func setArg(stmt *sqlite.Stmt, i int, v reflect.Value) {
-	switch v.Kind() {
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		stmt.BindInt64(i, v.Int())
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-		stmt.BindInt64(i, int64(v.Uint()))
-	case reflect.Float32, reflect.Float64:
-		stmt.BindFloat(i, v.Float())
-	case reflect.String:
-		stmt.BindText(i, v.String())
-	case reflect.Bool:
-		stmt.BindBool(i, v.Bool())
-	case reflect.Invalid:
-		stmt.BindNull(i)
+func setArg(stmt *sqlite.Stmt, i int, v any) {
+	switch value := v.(type) {
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, uintptr:
+		stmt.BindInt64(i, value.(int64))
+	case float32, float64:
+		stmt.BindFloat(i, value.(float64))
+	case string:
+		stmt.BindText(i, value)
+	case bool:
+		stmt.BindBool(i, value)
+	case []byte:
+		stmt.BindBytes(i, value)
 	default:
-		if v.Kind() == reflect.Slice && v.Type().Elem().Kind() == reflect.Uint8 {
-			stmt.BindBytes(i, v.Bytes())
-		} else {
-			stmt.BindText(i, fmt.Sprint(v.Interface()))
-		}
+		stmt.BindNull(i)
 	}
 }
 
@@ -355,7 +348,7 @@ func setNamed(stmt *sqlite.Stmt, provided bitset, flags uint8, args map[string]a
 		}
 		delete(unused, name)
 		provided.set(i - 1)
-		setArg(stmt, i, reflect.ValueOf(arg))
+		setArg(stmt, i, arg)
 	}
 	if len(unused) > 0 {
 		return fmt.Errorf("%w: unknown argument %s", sqlite.ResultRange.ToError(), minStringInSet(unused))
