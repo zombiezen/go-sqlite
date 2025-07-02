@@ -35,13 +35,14 @@ type ExecOptions struct {
 	//
 	// Basic reflection on Args is used to map:
 	//
-	//	integers to BindInt64
-	//	floats   to BindFloat
-	//	[]byte   to BindBytes
-	//	string   to BindText
-	//	bool     to BindBool
+	//  - integers    to BindInt64
+	//  - floats      to BindFloat
+	//  - []byte      to BindBytes
+	//  - string      to BindText
+	//  - bool        to BindBool
+	//  - untyped nil to BindNull
 	//
-	// All other kinds are printed using fmt.Sprint(v) and passed to BindText.
+	// All other kinds are printed using [fmt.Sprint] and passed to BindText.
 	Args []any
 
 	// Named is the set of named arguments to bind to the statement. Keys must
@@ -50,13 +51,14 @@ type ExecOptions struct {
 	//
 	// Basic reflection on Named is used to map:
 	//
-	//	integers to BindInt64
-	//	floats   to BindFloat
-	//	[]byte   to BindBytes
-	//	string   to BindText
-	//	bool     to BindBool
+	//  - integers    to BindInt64
+	//  - floats      to BindFloat
+	//  - []byte      to BindBytes
+	//  - string      to BindText
+	//  - bool        to BindBool
+	//  - untyped nil to BindNull
 	//
-	// All other kinds are printed using fmt.Sprint(v) and passed to BindText.
+	// All other kinds are printed using [fmt.Sprint] and passed to BindText.
 	Named map[string]any
 
 	// ResultFunc is called for each result row.
@@ -76,14 +78,14 @@ type ExecOptions struct {
 // query using the [sqlite.Stmt] Bind* methods. Basic reflection on args is used
 // to map:
 //
-//	integers to BindInt64
-//	floats   to BindFloat
-//	[]byte   to BindBytes
-//	string   to BindText
-//	bool     to BindBool
+//   - integers    to BindInt64
+//   - floats      to BindFloat
+//   - []byte      to BindBytes
+//   - string      to BindText
+//   - bool        to BindBool
+//   - untyped nil to BindNull
 //
-// All other kinds are printed using fmt.Sprintf("%v", v) and passed
-// to BindText.
+// All other kinds are printed using [fmt.Sprint] and passed to BindText.
 //
 // Exec is implemented using the Stmt prepare mechanism which allows
 // better interactions with Go's type system and avoids pitfalls of
