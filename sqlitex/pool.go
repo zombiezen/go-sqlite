@@ -20,6 +20,7 @@ package sqlitex
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"zombiezen.com/go/sqlite"
@@ -73,10 +74,10 @@ func NewPool(uri string, opts PoolOptions) (pool *Pool, err error) {
 
 	if poolSize != 1 {
 		if uri == ":memory:" || opts.Flags&sqlite.OpenMemory != 0 {
-				uriLower := strings.ToLower(uri)
-				if !strings.Contains(uriLower, "cache=shared") && opts.Flags&sqlite.OpenSharedCache == 0 {
-						return nil, strerror{msg: `sqlite: uri==":memory:" or flag sqlite.OpenMemory does not work with multiple connections, use "file::memory:?mode=memory&cache=shared"`}
-				}
+			uriLower := strings.ToLower(uri)
+			if !strings.Contains(uriLower, "cache=shared") && opts.Flags&sqlite.OpenSharedCache == 0 {
+				return nil, strerror{msg: `sqlite: uri==":memory:" or flag sqlite.OpenMemory does not work with multiple connections, use "file::memory:?mode=memory&cache=shared"`}
+			}
 		}
 	}
 
