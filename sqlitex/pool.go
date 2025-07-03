@@ -69,11 +69,17 @@ func Open(uri string, flags sqlite.OpenFlags, poolSize int) (pool *Pool, err err
 
 // NewPool opens a fixed-size pool of SQLite connections.
 func NewPool(uri string, opts PoolOptions) (pool *Pool, err error) {
-	if uri == ":memory:" {
-		return nil, strerror{msg: `sqlite: ":memory:" does not work with multiple connections, use "file::memory:?mode=memory&cache=shared"`}
+	poolSize := opts.PoolSize
+
+	if poolSize != 1 {
+		if uri == ":memory:" || opts.Flags&sqlite.OpenMemory != 0 {
+				uriLower := strings.ToLower(uri)
+				if !strings.Contains(uriLower, "cache=shared") && opts.Flags&sqlite.OpenSharedCache == 0 {
+						return nil, strerror{msg: `sqlite: uri==":memory:" or flag sqlite.OpenMemory does not work with multiple connections, use "file::memory:?mode=memory&cache=shared"`}
+				}
+		}
 	}
 
-	poolSize := opts.PoolSize
 	if poolSize < 1 {
 		poolSize = 10
 	}
