@@ -164,9 +164,9 @@ func (ctx Context) result(v Value, err error) {
 
 func (ctx Context) resultError(err error) {
 	errstr := err.Error()
-	cerrstr, err := libc.CString(errstr)
-	if err != nil {
-		panic(err)
+	cerrstr, cerr := libc.CString(errstr)
+	if cerr != nil {
+		panic(cerr)
 	}
 	defer libc.Xfree(ctx.tls, cerrstr)
 	lib.Xsqlite3_result_error(ctx.tls, ctx.ptr, cerrstr, int32(len(errstr)))

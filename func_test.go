@@ -251,6 +251,86 @@ func (f *sumintsFunction) Finalize(ctx Context) {
 	*f.finalCalled = true
 }
 
+func TestScalarFuncErrorCode(t *testing.T) {
+	c, err := OpenConn(":memory:", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := c.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	// Register a scalar function that returns an error wrapping a specific
+	// SQLite result code (ResultReadOnly). If resultError correctly preserves
+	// the original error, the error code propagated through sqlite3_step should
+	// match ResultReadOnly.
+	err = c.CreateFunction("fail_readonly", &FunctionImpl{
+		NArgs:         0,
+		Deterministic: true,
+		Scalar: func(ctx Context, args []Value) (Value, error) {
+			return Value{}, ResultReadOnly.ToError()
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stmt, _, err := c.PrepareTransient("SELECT fail_readonly();")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stmt.Finalize()
+
+	_, stepErr := stmt.Step()
+	if stepErr == nil {
+		t.Fatal("Step() returned nil error; want error with code ResultReadOnly")
+	}
+	if got := ErrCode(stepErr); got != ResultReadOnly {
+		t.Errorf("ErrCode(stepErr) = %v; want %v", got, ResultReadOnly)
+	}
+}
+
+func TestScalarFuncPlainError(t *testing.T) {
+	c, err := OpenConn(":memory:", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := c.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	// Register a scalar function that returns a plain (non-SQLite) error.
+	// resultError should propagate this as ResultError (generic SQLITE_ERROR).
+	err = c.CreateFunction("fail_generic", &FunctionImpl{
+		NArgs:         0,
+		Deterministic: true,
+		Scalar: func(ctx Context, args []Value) (Value, error) {
+			return Value{}, fmt.Errorf("something went wrong")
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stmt, _, err := c.PrepareTransient("SELECT fail_generic();")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stmt.Finalize()
+
+	_, stepErr := stmt.Step()
+	if stepErr == nil {
+		t.Fatal("Step() returned nil error; want error with code ResultError")
+	}
+	if got := ErrCode(stepErr); got != ResultError {
+		t.Errorf("ErrCode(stepErr) = %v; want %v", got, ResultError)
+	}
+}
+
 func TestCastTextToInteger(t *testing.T) {
 	tests := []struct {
 		text string
