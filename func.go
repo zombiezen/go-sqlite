@@ -162,15 +162,15 @@ func (ctx Context) result(v Value, err error) {
 	}
 }
 
-func (ctx Context) resultError(err error) {
-	errstr := err.Error()
-	cerrstr, err := libc.CString(errstr)
+func (ctx Context) resultError(resultError error) {
+	errorMessage := resultError.Error()
+	cErrorMessage, err := libc.CString(errorMessage)
 	if err != nil {
 		panic(err)
 	}
-	defer libc.Xfree(ctx.tls, cerrstr)
-	lib.Xsqlite3_result_error(ctx.tls, ctx.ptr, cerrstr, int32(len(errstr)))
-	lib.Xsqlite3_result_error_code(ctx.tls, ctx.ptr, int32(ErrCode(err)))
+	defer libc.Xfree(ctx.tls, cErrorMessage)
+	lib.Xsqlite3_result_error(ctx.tls, ctx.ptr, cErrorMessage, int32(len(errorMessage)))
+	lib.Xsqlite3_result_error_code(ctx.tls, ctx.ptr, int32(ErrCode(resultError)))
 }
 
 // Value represents a value that can be stored in a database table.

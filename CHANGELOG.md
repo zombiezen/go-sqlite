@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 [Unreleased]: https://github.com/zombiezen/go-sqlite/compare/v1.4.2...main
 
+## [Unreleased][]
+
+### Fixed
+
+- User-defined functions that return specific error codes are now correctly propagated
+  ([#133](https://github.com/zombiezen/go-sqlite/pull/133)).
+
 ## [1.4.2][] - 2025-05-23
 
 Version 1.4.2 updates the `modernc.org/sqlite` version to 1.37.1.
