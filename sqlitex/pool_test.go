@@ -95,6 +95,72 @@ func TestPool(t *testing.T) {
 	stmt.Reset()
 }
 
+func TestInvalidPoolOptions(t *testing.T) {
+	dir, err := os.MkdirTemp("", "sqlite-test-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+
+	dbFile := filepath.Join(dir, "awal.db")
+	dbFileShared := filepath.Join(dir, "awal.db?cache=shared")
+
+	tests := []struct {
+		name    string
+		uri     string
+		flags   sqlite.OpenFlags
+		wantErr bool
+	}{
+		{
+			name:    "Error: uri is set to :memory: with poolsize > 1",
+			uri:     ":memory:",
+			flags:   sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenURI,
+			wantErr: true,
+		},
+		{
+			name:    "Error: OpenMemory flag set with poolsize > 1",
+			uri:     dbFile,
+			flags:   sqlite.OpenMemory | sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenURI,
+			wantErr: true,
+		},
+		{
+			name:  "Success: uri is :memory: but cache is shared via flag with poolsize > 1",
+			uri:   ":memory:",
+			flags: sqlite.OpenSharedCache | sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenURI,
+		},
+		{
+			name:  "Succes: uri has cached=shared and sqlite.OpenMemory flag is set with poolsize > 1",
+			uri:   dbFileShared,
+			flags: sqlite.OpenMemory | sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenURI,
+		},
+		{
+			name:  "Success: uri is dbFile, flag is set to sqlite.OpenMemory && sqlite.OpenSharedCache with poolsize > 1",
+			uri:   dbFile,
+			flags: sqlite.OpenMemory | sqlite.OpenReadWrite | sqlite.OpenCreate | sqlite.OpenSharedCache | sqlite.OpenURI,
+		},
+	}
+
+	for _, test := range tests {
+		dbpool, err := sqlitex.NewPool(test.uri, sqlitex.PoolOptions{
+			Flags:    test.flags,
+			PoolSize: 2,
+		})
+		if err == nil {
+			dbpool.Close()
+		}
+
+		switch {
+		case err == nil && test.wantErr:
+			t.Errorf("TestInvalidPoolOptions(%s): got err == nil, want err != nil", test.name)
+			continue
+		case err != nil && !test.wantErr:
+			t.Errorf("TestInvalidPoolOptions(%s): got err == %s, want err == nil", test.name, err)
+			continue
+		}
+	}
+
+}
+
 const insertCount = 120
 
 func testInsert(t *testing.T, id string, dbpool *sqlitex.Pool) {
