@@ -252,13 +252,16 @@ func (outputs *IndexOutputs) copyToC(tls *libc.TLS, infoPtr uintptr) error {
 	info := (*lib.Sqlite3_index_info)(unsafe.Pointer(infoPtr))
 
 	aConstraintUsage := info.FaConstraintUsage
-	for _, u := range outputs.ConstraintUsage {
+	for i, u := range outputs.ConstraintUsage {
 		ptr := (*lib.Sqlite3_index_constraint_usage)(unsafe.Pointer(aConstraintUsage))
 		ptr.FargvIndex = int32(u.ArgvIndex)
 		if u.Omit {
 			ptr.Fomit = 1
 		} else {
 			ptr.Fomit = 0
+		}
+		if u.InOpAllAtOnce {
+			lib.Xsqlite3_vtab_in(tls, infoPtr, int32(i), 1)
 		}
 		aConstraintUsage += unsafe.Sizeof(lib.Sqlite3_index_constraint_usage{})
 	}
@@ -306,6 +309,9 @@ type IndexConstraintUsage struct {
 	// SQLite will always double-check that rows satisfy the constraint if Omit is false,
 	// but may skip this check if Omit is true.
 	Omit bool
+	// Set InOpAllAtOnce to true if the constraint is an IN operator and the
+	// Filter method should receive all values at once.
+	InOpAllAtOnce bool
 }
 
 // IndexID is a virtual table index identifier.

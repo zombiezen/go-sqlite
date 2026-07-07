@@ -20,6 +20,7 @@ package sqlite
 import (
 	"errors"
 	"fmt"
+	"iter"
 	"math"
 	"math/bits"
 	"strconv"
@@ -223,6 +224,32 @@ func (v Value) Type() ColumnType {
 		return ColumnType(v.ptrOrType)
 	}
 	return ColumnType(lib.Xsqlite3_value_type(v.tls, v.ptrOrType))
+}
+
+// All iterates all values of an IN operator
+// https://www.sqlite.org/c3ref/vtab_in.html
+// https://www.sqlite.org/c3ref/vtab_in_first.html
+func (v Value) All() iter.Seq[Value] {
+	return func(yield func(Value) bool) {
+		if v.tls == nil ||
+			v.ptrOrType == 0 ||
+			ColumnType(lib.Xsqlite3_value_type(v.tls, v.ptrOrType)) != TypeNull {
+			return
+		}
+		ppVal := lib.Xsqlite3_malloc(v.tls, int32(unsafe.Sizeof(uintptr(0))))
+		if ppVal != 0 {
+			defer lib.Xsqlite3_free(v.tls, ppVal)
+		}
+		for rc := ResultCode(lib.Xsqlite3_vtab_in_first(v.tls, v.ptrOrType, ppVal)); rc == ResultOK && *(*uintptr)(unsafe.Pointer(ppVal)) != 0; rc = ResultCode(lib.Xsqlite3_vtab_in_next(v.tls, v.ptrOrType, ppVal)) {
+			// do something with pVal
+			if !yield(Value{
+				tls:       v.tls,
+				ptrOrType: *(*uintptr)(unsafe.Pointer(ppVal)),
+			}) {
+				return
+			}
+		}
+	}
 }
 
 // Conversions follow the table in https://sqlite.org/c3ref/column_blob.html

@@ -32,6 +32,9 @@ type IndexConstraint struct {
 	RValue Value
 	// RValueKnown indicates whether RValue is set.
 	RValueKnown bool
+	// InOpAllAtOnce is true if the constraint is an IN operator
+	// that can be processed all at once
+	InOpAllAtOnce bool
 }
 
 func (c *IndexConstraint) copyFromC(tls *libc.TLS, infoPtr uintptr, i int32, ppVal uintptr) {
@@ -41,6 +44,12 @@ func (c *IndexConstraint) copyFromC(tls *libc.TLS, infoPtr uintptr, i int32, ppV
 		Column: int(src.FiColumn),
 		Op:     IndexConstraintOp(src.Fop),
 		Usable: src.Fusable != 0,
+	}
+
+	if c.Op == IndexConstraintEq {
+		if lib.Xsqlite3_vtab_in(tls, infoPtr, int32(i), -1) != 0 {
+			c.InOpAllAtOnce = true
+		}
 	}
 
 	const binaryCollation = "BINARY"
